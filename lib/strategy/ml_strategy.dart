@@ -4,6 +4,10 @@ import 'indicators.dart';
 
 class MLStrategy {
   static const List<int> _returnLags = [1, 2, 3, 5, 8, 13];
+
+  /// Maior janela necessaria para calcular qualquer feature.
+  static const int _maxWindow = 25;
+
   static const int _featureCount = _returnLags.length + 3;
 
   final List<double> _weights = List.filled(_featureCount, 0.0);
@@ -16,7 +20,7 @@ class MLStrategy {
   MLStrategy({double learningRate = 0.02}) : _learningRate = learningRate;
 
   List<double>? buildFeatures(List<double> closes) {
-    if (closes.length < 25) return null;
+    if (closes.length < _maxWindow) return null;
     final features = <double>[];
 
     for (final lag in _returnLags) {
@@ -24,20 +28,16 @@ class MLStrategy {
       features.add(ret * 10000 / 10);
     }
 
-    final rsiVal = Indicators.rsi(closes, 14);
+    final rsiVal = Indicators.rsiWilder(closes, 14);
     lastRsi = rsiVal ?? 50;
     features.add((lastRsi - 50) / 50);
 
+    // z-score do ultimo retorno sobre a janela de 20 retornos.
     final returns = <double>[];
-    for (var i = closes.length - 20; i < closes.length; i++) {
+    for (var i = closes.length - 21; i < closes.length; i++) {
       returns.add(closes[i] / closes[i - 1] - 1);
     }
-    final mean = returns.reduce((a, b) => a + b) / returns.length;
-    final variance =
-        returns.fold<double>(0, (acc, v) => acc + (v - mean) * (v - mean)) /
-            returns.length;
-    final sd = math.sqrt(variance);
-    features.add(sd == 0 ? 0 : (returns.last - mean) / sd);
+    features.add(Indicators.zScoreLast(returns, 20));
 
     final bb = Indicators.bollinger(closes, 20)!;
     final width = bb.upper - bb.lower;
@@ -70,9 +70,15 @@ class MLStrategy {
     }
   }
 
+  /// Treino inicial sobre o historico.
+  ///
+  /// Usa uma janela deslizante limitada em vez de copiar a lista inteira
+  /// a cada passo (O(n * _maxWindow) em vez de O(n^2)).
   void warmUp(List<double> closes) {
-    for (var i = 25; i < closes.length - 1; i++) {
-      final window = closes.sublist(0, i + 1);
+    if (closes.length <= _maxWindow + 1) return;
+    for (var i = _maxWindow; i < closes.length - 1; i++) {
+      final start = math.max(0, i + 1 - 3 * _maxWindow);
+      final window = closes.sublist(start, i + 1);
       final f = buildFeatures(window);
       if (f != null) {
         train(f, closes[i + 1] > closes[i]);

@@ -3,10 +3,14 @@ name: Build APK
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
+env:
+  FLUTTER_VERSION: "3.47.1"
+
 jobs:
-  build:
+  analyze-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -16,12 +20,52 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Generate platform folders (android)
+        run: flutter create . --platforms=android --project-name deriv_trading_bot --org com.derivbot
+
+      - name: Add INTERNET permission
+        run: |
+          f=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$f"
+          grep -q "INTERNET" "$f" || exit 1
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+
+      - name: Run tests
+        run: flutter test
+
+  build:
+    needs: analyze-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
 
       - name: Generate platform folders (android)
         run: flutter create . --platforms=android --project-name deriv_trading_bot --org com.derivbot

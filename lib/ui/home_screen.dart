@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../bot/trading_bot.dart';
 import '../state/bot_state.dart';
 import 'settings_screen.dart';
 
@@ -31,8 +32,10 @@ class HomeScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: _StatCard(
-                    label: 'Saldo',
-                    value: '\$${state.balance.toStringAsFixed(2)}',
+                    label:
+                        'Saldo (${state.accountIsVirtual ? "DEMO" : "REAL"})',
+                    value:
+                        '${state.balance.toStringAsFixed(2)} ${state.currency}',
                     color: Colors.blueAccent,
                   ),
                 ),
@@ -90,9 +93,11 @@ class HomeScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text(
-              state.isRunning
-                  ? 'Status: OPERANDO (${state.config.symbol})'
-                  : 'Status: PARADO',
+              state.status == BotStatus.reconnecting
+                  ? 'Status: RECONECTANDO (${state.config.symbol})'
+                  : state.isRunning
+                      ? 'Status: OPERANDO (${state.config.symbol})'
+                      : 'Status: PARADO',
               style: TextStyle(
                 color: state.isRunning ? Colors.greenAccent : Colors.grey,
                 fontWeight: FontWeight.bold,
@@ -130,9 +135,10 @@ class HomeScreen extends StatelessWidget {
                   icon: Icon(state.isRunning ? Icons.stop : Icons.play_arrow),
                   label: Text(state.isRunning ? 'PARAR BOT' : 'INICIAR BOT'),
                   onPressed: () {
-                    if (state.config.token.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('Configure seu token da API primeiro.')));
+                    final missing = state.missingCredentials;
+                    if (missing.isNotEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(missing)));
                       return;
                     }
                     state.isRunning ? state.stop() : state.start();

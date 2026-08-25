@@ -1,55 +1,253 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class DerivApiException implements Exception {
   final String message;
-  DerivApiException(this.message);
+  final String? code;
+  DerivApiException(this.message, {this.code});
   @override
-  String toString() => message;
+  String toString() => code == null ? message : '$code: $message';
+}
+
+class AccountInfo {
+  final String accountId;
+  final bool isVirtual;
+  final String currency;
+  final double balance;
+
+  const AccountInfo({
+    required this.accountId,
+    required this.isVirtual,
+    required this.currency,
+    required this.balance,
+  });
+}
+
+class _Subscription {
+  final StreamController<Map<String, dynamic>> controller;
+  final Map<String, dynamic> payload;
+  String? streamId;
+
+  _Subscription(this.controller, this.payload);
 }
 
 class DerivApi {
-  static const String appId = '1089';
+  static const String apiBase = 'https://api.derivws.com';
+
   WebSocketChannel? _channel;
+  http.Client? _http;
   int _reqId = 0;
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
-  final Map<int, void Function(Map<String, dynamic>)> _subscriptions = {};
+  final Map<int, _Subscription> _subscriptions = {};
+  StreamSubscription<dynamic>? _socketSub;
 
-  bool get isConnected => _channel != null;
+  String _token = '';
+  String _appId = '';
 
-  Future<void> connect() async {
-    final uri = Uri.parse('wss://ws.derivws.com/websockets/v3?app_id=$appId');
-    _channel = WebSocketChannel.connect(uri);
-    await _channel!.ready;
-    _channel!.stream.listen(
-      (data) => _handleMessage(data as String),
-      onError: (Object e) => _failAll('Conexao perdida: $e'),
-      onDone: () => _failAll('Conexao fechada'),
-      cancelOnError: true,
+  /// Callback acionado quando a conexão cai inesperadamente.
+  void Function(String reason)? onDisconnected;
+
+  bool get isConnected => _channel != null && !_isClosing;
+
+  bool _isClosing = false;
+
+  Future<void> connect({
+    required String token,
+    required String appId,
+  }) async {
+    if (token.trim().isEmpty) {
+      throw const DerivApiException('Token vazio');
+    }
+    if (appId.trim().isEmpty) {
+      throw const DerivApiException(
+        'App ID vazio. Registre um app (tipo PAT) em developers.deriv.com '
+        'e cole o App ID nas configuracoes.',
+      );
+    }
+    _token = token.trim();
+    _appId = appId.trim();
+    await _openSession();
+  }
+
+  Future<void> _openSession() async {
+    _isClosing = false;
+    final accountId = await _resolveAccountId();
+    final wsUrl = await _requestOtpUrl(accountId);
+    await _connectSocket(wsUrl);
+  }
+
+  Future<String> _resolveAccountId() async {
+    final accounts = await _restRequest(
+      method: 'GET',
+      path: '/trading/v1/options/accounts',
+    );
+    final data = accounts['data'];
+    final list = data is List ? data : (data?['accounts'] as List?);
+    if (list == null || list.isEmpty) {
+      throw const DerivApiException('Nenhuma conta encontrada neste token.');
+    }
+    Map<String, dynamic> pick(Map<dynamic, dynamic> a, Map<dynamic, dynamic> b) {
+      final aVirtual = (a['is_virtual'] ?? a['isVirtual']) == 1 ||
+          (a['is_virtual'] ?? a['isVirtual']) == true;
+      final bVirtual = (b['is_virtual'] ?? b['isVirtual']) == 1 ||
+          (b['is_virtual'] ?? b['isVirtual']) == true;
+      if (aVirtual != bVirtual) return aVirtual ? a : b;
+      return a;
+    }
+
+    Map<dynamic, dynamic> chosen = list.first as Map<dynamic, dynamic>;
+    for (final raw in list) {
+      chosen = pick(raw as Map<dynamic, dynamic>, chosen);
+    }
+    final id = chosen['account_id'] ??
+        chosen['accountId'] ??
+        chosen['loginid'] ??
+        chosen['id'];
+    if (id == null || id.toString().isEmpty) {
+      throw const DerivApiException(
+          'Resposta de contas sem account_id reconhecivel.');
+    }
+    return id.toString();
+  }
+
+  Future<String> _requestOtpUrl(String accountId) async {
+    final res = await _restRequest(
+      method: 'POST',
+      path: '/trading/v1/options/accounts/$accountId/otp',
+    );
+    final url = res['data']?['url'] as String?;
+    if (url == null || url.isEmpty) {
+      throw const DerivApiException('OTP nao retornou URL de WebSocket.');
+    }
+    return url;
+  }
+
+  Future<Map<String, dynamic>> _restRequest({
+    required String method,
+    required String path,
+  }) async {
+    _http ??= http.Client();
+    late final http.Response res;
+    try {
+      final uri = Uri.parse('$apiBase$path');
+      final req = http.Request(method, uri)
+        ..headers.addAll({
+          'Authorization': 'Bearer $_token',
+          'Deriv-App-ID': _appId,
+          'Content-Type': 'application/json',
+        });
+      res = await http.Response.fromStream(
+        await _http!.send(req).timeout(const Duration(seconds: 20)),
+      );
+    } on TimeoutException {
+      throw const DerivApiException('Timeout na chamada REST da Deriv.');
+    } catch (e) {
+      throw DerivApiException('Falha de rede na API REST: $e');
+    }
+    final body = res.body.isNotEmpty
+        ? jsonDecode(res.body) as Map<String, dynamic>
+        : <String, dynamic>{};
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw DerivApiException(
+        _extractRestError(body) ?? 'HTTP ${res.statusCode} em $path',
+        code: 'HTTP${res.statusCode}',
+      );
+    }
+    return body;
+  }
+
+  String? _extractRestError(Map<String, dynamic> body) {
+    final errors = body['errors'];
+    if (errors is List && errors.isNotEmpty) {
+      final first = errors.first;
+      if (first is Map) {
+        final msg = first['message'];
+        final code = first['code'];
+        if (msg != null) return code == null ? '$msg' : '$code: $msg';
+      }
+    }
+    return body['message'] as String?;
+  }
+
+  Future<void> _connectSocket(String url) async {
+    try {
+      _channel = WebSocketChannel.connect(Uri.parse(url));
+      await _channel!.ready.timeout(const Duration(seconds: 20));
+    } catch (e) {
+      _channel = null;
+      throw DerivApiException('Falha ao conectar no WebSocket: $e');
+    }
+    _socketSub = _channel!.stream.listen(
+      _handleMessage,
+      onError: (Object e) => _handleDisconnect('Erro no socket: $e'),
+      onDone: () => _handleDisconnect('Conexao fechada pela Deriv'),
+      cancelOnError: false,
     );
   }
 
-  void _handleMessage(String raw) {
-    final msg = jsonDecode(raw) as Map<String, dynamic>;
+  void _handleDisconnect(String reason) {
+    if (_isClosing || !isConnected) return;
+    _failPending(reason);
+    for (final sub in _subscriptions.values) {
+      sub.controller.addError(DerivApiException(reason));
+      sub.controller.close();
+    }
+    _subscriptions.clear();
+    _channel = null;
+    onDisconnected?.call(reason);
+  }
+
+  void _handleMessage(dynamic raw) {
+    if (raw is! String) return;
+    final Map<String, dynamic> msg;
+    try {
+      msg = jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return;
+    }
     final reqId = msg['req_id'] as int?;
     if (reqId == null) return;
-    if (_pending.containsKey(reqId)) {
-      final completer = _pending.remove(reqId)!;
-      if (msg['error'] != null) {
-        completer.completeError(DerivApiException(msg['error']['message'] as String));
+
+    final pending = _pending.remove(reqId);
+    if (pending != null) {
+      final error = msg['error'];
+      if (error != null) {
+        pending.completeError(DerivApiException(
+          error['message']?.toString() ?? 'Erro desconhecido',
+          code: error['code']?.toString(),
+        ));
       } else {
-        completer.complete(msg);
+        pending.complete(msg);
       }
-    } else if (_subscriptions.containsKey(reqId)) {
-      if (msg['error'] == null) {
-        _subscriptions[reqId]!(msg);
+      return;
+    }
+
+    final sub = _subscriptions[reqId];
+    if (sub != null) {
+      final error = msg['error'];
+      if (error != null) {
+        _subscriptions.remove(reqId);
+        sub.controller.addError(DerivApiException(
+          error['message']?.toString() ?? 'Erro desconhecido',
+          code: error['code']?.toString(),
+        ));
+        sub.controller.close();
+      } else {
+        final sid = msg['subscription'];
+        if (sid is Map && sub.streamId == null) {
+          sub.streamId = sid['id']?.toString();
+        } else if (sid is String && sub.streamId == null) {
+          sub.streamId = sid;
+        }
+        sub.controller.add(msg);
       }
     }
   }
 
-  void _failAll(String reason) {
+  void _failPending(String reason) {
     for (final c in _pending.values) {
       c.completeError(DerivApiException(reason));
     }
@@ -57,7 +255,7 @@ class DerivApi {
   }
 
   Future<Map<String, dynamic>> request(Map<String, dynamic> payload) {
-    if (!isConnected) throw DerivApiException('Nao conectado');
+    if (!isConnected) throw const DerivApiException('Nao conectado');
     final id = ++_reqId;
     payload['req_id'] = id;
     final completer = Completer<Map<String, dynamic>>();
@@ -67,33 +265,54 @@ class DerivApi {
       const Duration(seconds: 20),
       onTimeout: () {
         _pending.remove(id);
-        throw DerivApiException('Timeout na requisicao');
+        throw const DerivApiException('Timeout na requisicao');
       },
     );
   }
 
   Stream<Map<String, dynamic>> subscribe(Map<String, dynamic> payload) {
-    if (!isConnected) throw DerivApiException('Nao conectado');
+    if (!isConnected) throw const DerivApiException('Nao conectado');
     final id = ++_reqId;
     payload['req_id'] = id;
-    final controller = StreamController<Map<String, dynamic>>();
-    _subscriptions[id] = controller.add;
+    final controller = StreamController<Map<String, dynamic>>(
+      onCancel: () => forgetByReqId(id),
+    );
+    final sub = _Subscription(controller, payload);
+    _subscriptions[id] = sub;
     _channel!.sink.add(jsonEncode(payload));
     return controller.stream;
   }
 
-  Future<Map<String, dynamic>> authorize(String token) async {
-    final res = await request({'authorize': token});
-    return res['authorize'] as Map<String, dynamic>;
+  /// Envia `forget` para encerrar uma assinatura no servidor.
+  Future<void> forgetByReqId(int reqId) async {
+    final sub = _subscriptions.remove(reqId);
+    if (sub == null) return;
+    final sid = sub.streamId;
+    if (sid == null || !isConnected) return;
+    try {
+      await request({'forget': sid});
+    } catch (_) {}
   }
 
-  Future<double> fetchBalance(String currency) async {
+  // ------------------------------------------------------------------
+  // Operacoes de alto nivel
+  // ------------------------------------------------------------------
+
+  Future<AccountInfo> fetchAccount() async {
     final res = await request({'balance': 1});
     final b = res['balance'] as Map<String, dynamic>;
-    return (b['balance'] as num).toDouble();
+    return AccountInfo(
+      accountId: (b['loginid'] ?? b['account_id'] ?? '').toString(),
+      isVirtual: b['is_virtual'] == 1 || b['is_virtual'] == true,
+      currency: (b['currency'] ?? 'USD').toString(),
+      balance: (b['balance'] as num?)?.toDouble() ?? 0,
+    );
   }
 
-  Future<List<double>> fetchTicksHistory(String symbol, {int count = 1000}) async {
+  Future<List<double>> fetchTicksHistory(
+    String symbol, {
+    int count = 1000,
+  }) async {
     final res = await request({
       'ticks_history': symbol,
       'adjust_start_time': 1,
@@ -106,20 +325,25 @@ class DerivApi {
     return prices.map((p) => p.toDouble()).toList();
   }
 
+  Stream<Map<String, dynamic>> subscribeTicks(String symbol) {
+    return subscribe({'ticks': symbol, 'subscribe': 1});
+  }
+
   Future<int> buyContract({
     required String contractType,
     required double stake,
     required int duration,
     required String symbol,
+    required String currency,
   }) async {
     final res = await request({
-      'buy': '1',
+      'buy': 1,
       'price': stake,
       'parameters': {
         'amount': stake,
         'basis': 'stake',
         'contract_type': contractType,
-        'currency': 'USD',
+        'currency': currency,
         'duration': duration,
         'duration_unit': 't',
         'symbol': symbol,
@@ -130,13 +354,33 @@ class DerivApi {
   }
 
   Stream<Map<String, dynamic>> subscribeContract(int contractId) {
-    return subscribe({'proposal_open_contract': 1, 'contract_id': contractId});
+    return subscribe({
+      'proposal_open_contract': 1,
+      'contract_id': contractId,
+      'subscribe': 1,
+    });
+  }
+
+  /// Assina todas as posicoes abertas (recuperacao apos reinicio).
+  Stream<Map<String, dynamic>> subscribeOpenContracts() {
+    return subscribe({'proposal_open_contract': 1, 'subscribe': 1});
+  }
+
+  Future<void> sell(int contractId, {double price = 0}) async {
+    await request({'sell': contractId, 'price': price});
   }
 
   void dispose() {
-    _failAll('Cliente encerrado');
+    _isClosing = true;
+    for (final sub in _subscriptions.values) {
+      unawaited(sub.controller.close());
+    }
     _subscriptions.clear();
-    _channel?.sink.close();
+    _failPending('Cliente encerrado');
+    _socketSub?.cancel();
+    unawaited(_channel?.sink.close());
     _channel = null;
+    _http?.close();
+    _http = null;
   }
 }

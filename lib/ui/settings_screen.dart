@@ -13,6 +13,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _token;
+  late final TextEditingController _appId;
   late final TextEditingController _stake;
   late final TextEditingController _maxLoss;
   late final TextEditingController _takeProfit;
@@ -22,6 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late double _threshold;
   late int _duration;
   late bool _martingale;
+  late int _martingaleLevels;
 
   static const _symbols = {
     'R_10': 'Volatility 10',
@@ -37,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     final cfg = context.read<BotState>().config;
     _token = TextEditingController(text: cfg.token);
+    _appId = TextEditingController(text: cfg.appId);
     _stake = TextEditingController(text: cfg.baseStake.toString());
     _maxLoss = TextEditingController(text: cfg.maxDailyLoss.toString());
     _takeProfit = TextEditingController(text: cfg.takeProfit.toString());
@@ -45,11 +48,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _threshold = cfg.entryThreshold;
     _duration = cfg.durationTicks;
     _martingale = cfg.useMartingale;
+    _martingaleLevels = cfg.martingaleMaxLevels;
   }
 
   @override
   void dispose() {
     _token.dispose();
+    _appId.dispose();
     _stake.dispose();
     _maxLoss.dispose();
     _takeProfit.dispose();
@@ -68,10 +73,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
             controller: _token,
             obscureText: true,
             decoration: const InputDecoration(
-              labelText: 'Token da API Deriv',
+              labelText: 'Token PAT da Deriv',
               border: OutlineInputBorder(),
               helperText:
-                  'Crie em app.deriv.com > Configuracoes > Token de API (escrita)',
+                  'developers.deriv.com > Dashboard > API tokens > criar PAT '
+                  '(escopos read + trade)',
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _appId,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'App ID (nova plataforma)',
+              border: OutlineInputBorder(),
+              helperText:
+                  'developers.deriv.com > Dashboard > registrar app do tipo '
+                  'PAT e copiar o App ID gerado',
             ),
           ),
           const SizedBox(height: 16),
@@ -141,10 +159,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 16),
           SwitchListTile(
             title: const Text('Martingale'),
-            subtitle: const Text('Dobra o stake apos perdas (MAIS RISCO)'),
+            subtitle: const Text('Aumenta o stake apos perdas (MAIS RISCO)'),
             value: _martingale,
             onChanged: (v) => setState(() => _martingale = v),
           ),
+          if (_martingale)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Text('Niveis maximos:'),
+                  Expanded(
+                    child: Slider(
+                      value: _martingaleLevels.toDouble(),
+                      min: 1,
+                      max: 5,
+                      divisions: 4,
+                      label: '$_martingaleLevels',
+                      onChanged: (v) =>
+                          setState(() => _martingaleLevels = v.round()),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -183,6 +221,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final state = context.read<BotState>();
               state.saveConfig(BotConfig(
                 token: _token.text.trim(),
+                appId: _appId.text.trim(),
                 symbol: _symbol,
                 baseStake: double.tryParse(_stake.text) ?? 1.0,
                 durationTicks: _duration,
@@ -191,6 +230,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 takeProfit: double.tryParse(_takeProfit.text) ?? 50.0,
                 useMartingale: _martingale,
                 martingaleFactor: 2.0,
+                martingaleMaxLevels: _martingaleLevels,
                 maxTrades: int.tryParse(_maxTrades.text) ?? 100,
               ));
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
