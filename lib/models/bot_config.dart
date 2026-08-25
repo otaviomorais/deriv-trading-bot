@@ -1,4 +1,6 @@
 class BotConfig {
+  static const defaultSymbol = 'R_100';
+
   final String token;
   final String symbol;
   final double baseStake;

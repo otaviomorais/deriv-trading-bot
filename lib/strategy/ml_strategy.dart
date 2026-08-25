@@ -4,7 +4,7 @@ import 'indicators.dart';
 
 class MLStrategy {
   static const List<int> _returnLags = [1, 2, 3, 5, 8, 13];
-  static const int _featureCount = _returnLags.length + 3;
+  static const int _featureCount = 9;
 
   final List<double> _weights = List.filled(_featureCount, 0.0);
   double _bias = 0;

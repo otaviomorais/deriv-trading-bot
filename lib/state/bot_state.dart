@@ -10,7 +10,7 @@ class BotState extends ChangeNotifier {
   static const _prefsKey = 'bot_config_v1';
 
   TradingBot? _bot;
-  BotConfig config = const BotConfig(token: '');
+  BotConfig config = const BotConfig(token: '', symbol: 'R_100');
 
   BotStatus status = BotStatus.idle;
   double balance = 0;
