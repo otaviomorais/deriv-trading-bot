@@ -38,6 +38,9 @@ jobs:
           sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$f"
           grep -q "INTERNET" "$f" || exit 1
 
+      - name: Remove generated placeholder test
+        run: rm -f test/widget_test.dart
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -75,6 +78,9 @@ jobs:
           f=android/app/src/main/AndroidManifest.xml
           sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$f"
           grep -q "INTERNET" "$f" || exit 1
+
+      - name: Remove generated placeholder test
+        run: rm -f test/widget_test.dart
 
       - name: Install dependencies
         run: flutter pub get

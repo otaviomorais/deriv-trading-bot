@@ -94,7 +94,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            value: _symbol,
+            initialValue: _symbol,
             decoration: const InputDecoration(
                 labelText: 'Simbolo', border: OutlineInputBorder()),
             items: _symbols.entries

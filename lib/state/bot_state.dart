@@ -15,7 +15,7 @@ class BotState extends ChangeNotifier {
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   TradingBot? _bot;
-  BotConfig config = const BotConfig(token: '');
+  BotConfig config = const BotConfig(token: '', symbol: 'R_100');
 
   BotStatus status = BotStatus.idle;
   String currency = 'USD';

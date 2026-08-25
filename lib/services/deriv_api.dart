@@ -7,7 +7,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 class DerivApiException implements Exception {
   final String message;
   final String? code;
-  DerivApiException(this.message, {this.code});
+  const DerivApiException(this.message, {this.code});
   @override
   String toString() => code == null ? message : '$code: $message';
 }
@@ -89,7 +89,7 @@ class DerivApi {
     if (list == null || list.isEmpty) {
       throw const DerivApiException('Nenhuma conta encontrada neste token.');
     }
-    Map<String, dynamic> pick(Map<dynamic, dynamic> a, Map<dynamic, dynamic> b) {
+    Map<dynamic, dynamic> pick(Map<dynamic, dynamic> a, Map<dynamic, dynamic> b) {
       final aVirtual = (a['is_virtual'] ?? a['isVirtual']) == 1 ||
           (a['is_virtual'] ?? a['isVirtual']) == true;
       final bVirtual = (b['is_virtual'] ?? b['isVirtual']) == 1 ||

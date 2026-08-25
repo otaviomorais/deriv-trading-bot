@@ -8,7 +8,9 @@ class MLStrategy {
   /// Maior janela necessaria para calcular qualquer feature.
   static const int _maxWindow = 25;
 
-  static const int _featureCount = _returnLags.length + 3;
+  /// _returnLags.length + 3 (rsi, zscore, bollinger).
+  /// (.length nao pode ser usado em expressao const)
+  static const int _featureCount = 9;
 
   final List<double> _weights = List.filled(_featureCount, 0.0);
   double _bias = 0;
@@ -17,7 +19,12 @@ class MLStrategy {
   int trainedSamples = 0;
   double lastRsi = 50;
 
-  MLStrategy({double learningRate = 0.02}) : _learningRate = learningRate;
+  MLStrategy({double learningRate = 0.02})
+      : _learningRate = learningRate,
+        assert(
+          _featureCount == _returnLags.length + 3,
+          '_featureCount fora de sincronia com _returnLags',
+        );
 
   List<double>? buildFeatures(List<double> closes) {
     if (closes.length < _maxWindow) return null;
