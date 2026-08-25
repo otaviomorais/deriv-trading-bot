@@ -53,6 +53,8 @@ jobs:
   build:
     needs: analyze-test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -93,3 +95,25 @@ jobs:
         with:
           name: deriv-trading-bot-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          TAG="v${VERSION}"
+          FILE="deriv-trading-bot-${TAG}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$FILE"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber
+            echo "Release $TAG atualizada com $FILE"
+          else
+            gh release create "$TAG" "$FILE" \
+              --title "Deriv AI Bot $TAG" \
+              --notes "APK release (Flutter $FLUTTER_VERSION).
+
+              Baixe o arquivo .apk e instale no Android (permita apps de fontes desconhecidas).
+
+              Requer token PAT + App ID da nova plataforma developers.deriv.com."
+            echo "Release $TAG criada com $FILE"
+          fi
