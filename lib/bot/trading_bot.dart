@@ -8,8 +8,10 @@ import '../strategy/ml_strategy.dart';
 enum BotStatus { idle, connecting, running, stopped, error }
 
 class TradingBot {
-  final DerivApi api = DerivApi();
   final MLStrategy strategy = MLStrategy();
+
+  DerivApi get api => _api ??= DerivApi(appId: config.appId);
+  DerivApi? _api;
 
   BotConfig config;
   final void Function(String message) onLog;

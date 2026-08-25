@@ -2,6 +2,7 @@ class BotConfig {
   static const defaultSymbol = 'R_100';
 
   final String token;
+  final String appId;
   final String symbol;
   final double baseStake;
   final int durationTicks;
@@ -14,6 +15,7 @@ class BotConfig {
 
   const BotConfig({
     required this.token,
+    this.appId = '1089',
     required this.symbol,
     this.baseStake = 1.0,
     this.durationTicks = 5,
@@ -27,6 +29,7 @@ class BotConfig {
 
   BotConfig copyWith({
     String? token,
+    String? appId,
     String? symbol,
     double? baseStake,
     int? durationTicks,
@@ -39,6 +42,7 @@ class BotConfig {
   }) {
     return BotConfig(
       token: token ?? this.token,
+      appId: appId ?? this.appId,
       symbol: symbol ?? this.symbol,
       baseStake: baseStake ?? this.baseStake,
       durationTicks: durationTicks ?? this.durationTicks,

@@ -13,6 +13,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _token;
+  late final TextEditingController _appId;
   late final TextEditingController _stake;
   late final TextEditingController _maxLoss;
   late final TextEditingController _takeProfit;
@@ -37,6 +38,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     final cfg = context.read<BotState>().config;
     _token = TextEditingController(text: cfg.token);
+    _appId = TextEditingController(text: cfg.appId);
     _stake = TextEditingController(text: cfg.baseStake.toString());
     _maxLoss = TextEditingController(text: cfg.maxDailyLoss.toString());
     _takeProfit = TextEditingController(text: cfg.takeProfit.toString());
@@ -50,6 +52,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _token.dispose();
+    _appId.dispose();
     _stake.dispose();
     _maxLoss.dispose();
     _takeProfit.dispose();
@@ -71,7 +74,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               labelText: 'Token da API Deriv',
               border: OutlineInputBorder(),
               helperText:
-                  'Crie em app.deriv.com > Configuracoes > Token de API (escrita)',
+                  'Tokens "pat_" exigem o App ID do app onde foram criados',
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _appId,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'App ID',
+              border: OutlineInputBorder(),
+              helperText:
+                  'Use 1089 para tokens classicos (app.deriv.com). Para tokens pat_, use o App ID do painel api.deriv.com',
             ),
           ),
           const SizedBox(height: 16),
@@ -183,6 +197,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final state = context.read<BotState>();
               state.saveConfig(BotConfig(
                 token: _token.text.trim(),
+                appId: _appId.text.trim().isEmpty ? '1089' : _appId.text.trim(),
                 symbol: _symbol,
                 baseStake: double.tryParse(_stake.text) ?? 1.0,
                 durationTicks: _duration,

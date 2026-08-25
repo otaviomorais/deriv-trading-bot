@@ -28,8 +28,10 @@ Bot de trading para a corretora **Deriv** usando análise técnica + machine lea
 5. Instale no Android (permita "instalar apps de fontes desconhecidas").
 
 ## Como usar o app
-1. Em `app.deriv.com` → Configurações → **Token de API**: crie um token com escopo de **leitura + escrita** (necessário para comprar contratos).
-2. Abra o app → ícone de engrenagem → cole o token, escolha o símbolo, stake, duração e sensibilidade.
+1. Crie um token de API:
+   - **Token classico**: app.deriv.com -> Configuracoes -> **Token de API** (escopo leitura + escrita). Use App ID `1089`.
+   - **Personal Access Token (`pat_...`)**: criado em api.deriv.com e vinculado a um aplicativo. Nesse caso informe o mesmo **App ID** do aplicativo nas configuracoes do bot.
+2. Abra o app -> engrenagem -> cole o token + App ID, escolha simbolo, stake e sensibilidade.
 3. Salve e toque em **INICIAR BOT**.
 
 > Recomendação: teste primeiro em **conta DEMO** da Deriv (o token da demo funciona igual).

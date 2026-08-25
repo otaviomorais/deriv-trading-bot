@@ -11,13 +11,16 @@ class DerivApiException implements Exception {
 }
 
 class DerivApi {
-  static const String appId = '1089';
+  static const String defaultAppId = '1089';
+  final String appId;
   WebSocketChannel? _channel;
   int _reqId = 0;
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
   final Map<int, void Function(Map<String, dynamic>)> _subscriptions = {};
 
   bool get isConnected => _channel != null;
+
+  DerivApi({this.appId = defaultAppId});
 
   Future<void> connect() async {
     final uri = Uri.parse('wss://ws.derivws.com/websockets/v3?app_id=$appId');

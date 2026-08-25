@@ -36,6 +36,7 @@ class BotState extends ChangeNotifier {
         final map = jsonDecode(raw) as Map<String, dynamic>;
         config = BotConfig(
           token: map['token'] as String? ?? '',
+          appId: map['appId'] as String? ?? '1089',
           symbol: map['symbol'] as String? ?? 'R_100',
           baseStake: (map['baseStake'] as num?)?.toDouble() ?? 1.0,
           durationTicks: map['durationTicks'] as int? ?? 5,
@@ -56,6 +57,7 @@ class BotState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, jsonEncode({
       'token': config.token,
+      'appId': config.appId,
       'symbol': config.symbol,
       'baseStake': config.baseStake,
       'durationTicks': config.durationTicks,
