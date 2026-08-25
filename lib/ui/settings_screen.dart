@@ -74,7 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               labelText: 'Token da API Deriv',
               border: OutlineInputBorder(),
               helperText:
-                  'Tokens "pat_" exigem o App ID do app onde foram criados',
+                  'Use token CLASSICO: app.deriv.com > Configuracoes > Token de API (Read + Trade). Tokens "pat_" da nova API NAO funcionam neste bot',
             ),
           ),
           const SizedBox(height: 16),
