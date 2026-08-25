@@ -31,13 +31,23 @@ Bot de trading para a corretora **Deriv** usando análise técnica + machine lea
 
 ### 1. Registre um app em developers.deriv.com (obrigatório)
 1. Acesse [developers.deriv.com](https://developers.deriv.com) e faça login.
-2. No Dashboard, registre um novo aplicativo do tipo **PAT**.
-3. Copie o **App ID** gerado (App IDs antigos não funcionam com a nova plataforma).
+2. No Dashboard, registre um novo aplicativo do tipo **PAT**
+   (Dashboard > Applications > Register new app).
+3. Copie o **App ID** gerado (App IDs antigos, como o 1089, dão erro
+   `Invalid application` na plataforma nova).
 
 ### 2. Gere seu token PAT
 1. No mesmo Dashboard, vá em **API tokens** → crie um token (formato `pat_...`).
 2. Marque os escopos **read** + **trade** (obrigatório para comprar contratos).
 3. Copie e guarde — ele não pode ser visto novamente.
+
+### 2.5 (Opcional) Teste a conexão pelo terminal antes de usar o app
+Com o [Dart SDK](https://dart.dev/get-dart) instalado, na raiz do projeto:
+```bash
+dart run bin/diagnose.dart SEU_TOKEN_PAT SEU_APP_ID R_100
+```
+O diagnóstico percorre as mesmas etapas do app (contas → OTP → WebSocket →
+balance/ticks/proposal) e mostra exatamente onde algo falha.
 
 ### 3. Configure o app
 1. Abra o app → ícone de engrenagem.

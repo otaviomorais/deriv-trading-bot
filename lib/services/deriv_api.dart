@@ -151,10 +151,16 @@ class DerivApi {
         ? jsonDecode(res.body) as Map<String, dynamic>
         : <String, dynamic>{};
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw DerivApiException(
-        _extractRestError(body) ?? 'HTTP ${res.statusCode} em $path',
-        code: 'HTTP${res.statusCode}',
-      );
+      final raw = _extractRestError(body) ?? 'HTTP ${res.statusCode} em $path';
+      var msg = raw;
+      if (raw.contains('Invalid application')) {
+        msg = '$raw — este App ID nao esta registrado na plataforma nova '
+            '(developers.deriv.com > Dashboard > Applications). App IDs '
+            'antigos como 1089 nao funcionam.';
+      } else if (res.statusCode == 401) {
+        msg = '$raw — confira o token PAT e o App ID nas configuracoes.';
+      }
+      throw DerivApiException(msg, code: 'HTTP${res.statusCode}');
     }
     return body;
   }
