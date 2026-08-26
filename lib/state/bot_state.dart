@@ -64,7 +64,7 @@ class BotState extends ChangeNotifier {
       token: token ?? '',
       appId: map['appId'] as String? ?? '33wAcoYXHpsPdruTW0b7C',
       symbol: map['symbol'] as String? ?? 'R_100',
-      accountType: map['accountType'] as String? == BotConfig.accountReal
+      accountType: (map['accountType'] as String?) == BotConfig.accountReal
           ? BotConfig.accountReal
           : BotConfig.accountDemo,
       baseStake: (map['baseStake'] as num?)?.toDouble() ?? 1.0,
