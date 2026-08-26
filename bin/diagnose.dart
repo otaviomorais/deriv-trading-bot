@@ -99,13 +99,14 @@ Future<void> main(List<String> args) async {
 
   // Etapa 3: WebSocket
   step('[3/4] Conectando no WebSocket autenticado...');
-  WebSocket? ws;
+  WebSocket socket;
   try {
-    ws = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 20));
+    socket = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 20));
   } catch (e) {
     fail('WebSocket: $e');
     exit(1);
   }
+  final ws = socket;
   ok('Conectado e AUTENTICADO (o OTP ja autoriza a sessao)');
 
   var reqId = 0;
