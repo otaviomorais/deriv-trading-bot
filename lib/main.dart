@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_foreground_task/ui.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:provider/provider.dart';
 
 import 'state/bot_state.dart';
