@@ -307,9 +307,13 @@ class DerivApi {
   Future<AccountInfo> fetchAccount() async {
     final res = await request({'balance': 1});
     final b = res['balance'] as Map<String, dynamic>;
+    final accountId = (b['loginid'] ?? b['account_id'] ?? '').toString();
     return AccountInfo(
-      accountId: (b['loginid'] ?? b['account_id'] ?? '').toString(),
-      isVirtual: b['is_virtual'] == 1 || b['is_virtual'] == true,
+      accountId: accountId,
+      // Na plataforma nova, contas demo usam prefixo DOT; contas reais ROT.
+      isVirtual: b['is_virtual'] == 1 ||
+          b['is_virtual'] == true ||
+          accountId.startsWith('DOT'),
       currency: (b['currency'] ?? 'USD').toString(),
       balance: (b['balance'] as num?)?.toDouble() ?? 0,
     );
@@ -335,7 +339,8 @@ class DerivApi {
     return subscribe({'ticks': symbol, 'subscribe': 1});
   }
 
-  Future<int> buyContract({
+  /// Pede um preco (proposal). Retorna o id usado para comprar.
+  Future<String> fetchProposal({
     required String contractType,
     required double stake,
     required int duration,
@@ -343,17 +348,38 @@ class DerivApi {
     required String currency,
   }) async {
     final res = await request({
-      'buy': 1,
+      'proposal': 1,
+      'amount': stake,
+      'basis': 'stake',
+      'contract_type': contractType,
+      'currency': currency,
+      'duration': duration,
+      'duration_unit': 't',
+      // Na API nova o campo e underlying_symbol (nao symbol).
+      'underlying_symbol': symbol,
+    });
+    final p = res['proposal'] as Map<String, dynamic>;
+    return p['id'] as String;
+  }
+
+  /// Fluxo documentado da plataforma nova: proposal -> buy pelo ID.
+  Future<int> buyContract({
+    required String contractType,
+    required double stake,
+    required int duration,
+    required String symbol,
+    required String currency,
+  }) async {
+    final proposalId = await fetchProposal(
+      contractType: contractType,
+      stake: stake,
+      duration: duration,
+      symbol: symbol,
+      currency: currency,
+    );
+    final res = await request({
+      'buy': proposalId,
       'price': stake,
-      'parameters': {
-        'amount': stake,
-        'basis': 'stake',
-        'contract_type': contractType,
-        'currency': currency,
-        'duration': duration,
-        'duration_unit': 't',
-        'symbol': symbol,
-      },
     });
     final buy = res['buy'] as Map<String, dynamic>;
     return buy['contract_id'] as int;

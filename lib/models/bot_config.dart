@@ -14,7 +14,7 @@ class BotConfig {
 
   const BotConfig({
     required this.token,
-    this.appId = '',
+    this.appId = '33wAcoYXHpsPdruTW0b7C',
     required this.symbol,
     this.baseStake = 1.0,
     this.durationTicks = 5,

@@ -149,12 +149,15 @@ Future<void> main(List<String> args) async {
       'currency': 'USD',
       'duration': 5,
       'duration_unit': 't',
-      'symbol': symbol,
+      'underlying_symbol': symbol,
     });
-    prop['error'] == null
-        ? ok('proposal CALL (spot ${prop['proposal']['spot']}, '
-            'payout ${prop['proposal']['payout']})')
-        : fail('proposal: ${prop['error']}');
+    if (prop['error'] == null) {
+      final pid = prop['proposal']['id'];
+      ok('proposal CALL id=${pid.toString().substring(0, 12)}... '
+          '(spot ${prop['proposal']['spot']}, payout ${prop['proposal']['payout']})');
+    } else {
+      fail('proposal: ${prop['error']}');
+    }
 
     stdout.writeln('\n============================================================');
     ok('TUDO FUNCIONANDO. Use o mesmo token+App ID no app.');

@@ -62,7 +62,7 @@ class BotState extends ChangeNotifier {
 
     config = BotConfig(
       token: token ?? '',
-      appId: map['appId'] as String? ?? '',
+      appId: map['appId'] as String? ?? '33wAcoYXHpsPdruTW0b7C',
       symbol: map['symbol'] as String? ?? 'R_100',
       baseStake: (map['baseStake'] as num?)?.toDouble() ?? 1.0,
       durationTicks: map['durationTicks'] as int? ?? 5,
