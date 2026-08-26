@@ -111,8 +111,8 @@ Future<void> main(List<String> args) async {
   var reqId = 0;
   Future<Map<String, dynamic>> send(Map<String, dynamic> payload) async {
     payload['req_id'] = ++reqId;
-    ws!.add(jsonEncode(payload));
-    final raw = await ws!.first.timeout(const Duration(seconds: 15));
+    ws.add(jsonEncode(payload));
+    final raw = await ws.first.timeout(const Duration(seconds: 15));
     return jsonDecode(raw as String) as Map<String, dynamic>;
   }
 
@@ -159,7 +159,7 @@ Future<void> main(List<String> args) async {
     stdout.writeln('\n============================================================');
     ok('TUDO FUNCIONANDO. Use o mesmo token+App ID no app.');
   } finally {
-    await ws?.close();
+    await ws.close();
     client?.close();
   }
 }
