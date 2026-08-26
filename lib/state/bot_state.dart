@@ -1,20 +1,21 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../bot/bot_task_handler.dart';
 import '../bot/trading_bot.dart';
 import '../models/bot_config.dart';
 
 class BotState extends ChangeNotifier {
   static const _prefsKey = 'bot_config_v1';
   static const _secureTokenKey = 'bot_deriv_token';
-  static const _legacyTokenKey = 'token';
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
-  TradingBot? _bot;
   BotConfig config = const BotConfig(token: '', symbol: 'R_100');
 
   BotStatus status = BotStatus.idle;
@@ -36,6 +37,20 @@ class BotState extends ChangeNotifier {
 
   BotState() {
     _loadConfig();
+    if (Platform.isAndroid) {
+      FlutterForegroundTask.addTaskDataCallback(_onTaskData);
+      _reattachIfServiceAlive();
+    }
+  }
+
+  Future<void> _reattachIfServiceAlive() async {
+    try {
+      if (await FlutterForegroundTask.isRunningService) {
+        status = BotStatus.connecting;
+        notifyListeners();
+        FlutterForegroundTask.sendDataToTask({'cmd': 'query'});
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadConfig() async {
@@ -50,9 +65,8 @@ class BotState extends ChangeNotifier {
       }
     }
 
-    // Migra o token do plaintext (SharedPreferences) para o Keystore.
     var token = await _secureStorage.read(key: _secureTokenKey);
-    final legacyToken = map[_legacyTokenKey] as String?;
+    final legacyToken = map['token'] as String?;
     if ((token == null || token.isEmpty) &&
         legacyToken != null &&
         legacyToken.isNotEmpty) {
@@ -78,10 +92,9 @@ class BotState extends ChangeNotifier {
       maxTrades: map['maxTrades'] as int? ?? 100,
     );
 
-    // Remove credenciais antigas do storage inseguro.
-    if (map.containsKey(_legacyTokenKey)) {
+    if (map.containsKey('token')) {
       try {
-        final cleaned = Map<String, dynamic>.from(map)..remove(_legacyTokenKey);
+        final cleaned = Map<String, dynamic>.from(map)..remove('token');
         await prefs.setString(_prefsKey, jsonEncode(cleaned));
       } catch (_) {}
     }
@@ -125,63 +138,142 @@ class BotState extends ChangeNotifier {
     return '';
   }
 
-  void start() {
+  // ------------------------------------------------------------------
+  // Controle do servico em segundo plano (Android)
+  // ------------------------------------------------------------------
+
+  void _initService() {
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'deriv_bot_service',
+        channelName: 'Deriv AI Bot',
+        channelDescription:
+            'Mantem o bot conectado a Deriv em segundo plano.',
+        onlyAlertOnce: true,
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: true,
+        playSound: false,
+      ),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.repeat(5000),
+        autoRunOnBoot: false,
+        allowWakeLock: true,
+        allowWifiLock: true,
+      ),
+    );
+  }
+
+  Future<void> _requestPermissions() async {
+    if (!Platform.isAndroid) return;
+    final permission = await FlutterForegroundTask.checkNotificationPermission();
+    if (permission != NotificationPermission.granted) {
+      await FlutterForegroundTask.requestNotificationPermission();
+    }
+    if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+      await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+    }
+  }
+
+  Future<void> start() async {
     if (isRunning) return;
     final missing = missingCredentials;
     if (missing.isNotEmpty) {
       log('AVISO: $missing');
       return;
     }
-    status = BotStatus.connecting;
+
+    if (!Platform.isAndroid) {
+      log('AVISO: modo persistente disponivel apenas no Android.');
+      return;
+    }
+
     totalTrades = 0;
     pnl = 0;
     wins = 0;
     losses = 0;
     lastProbability = 0.5;
     lastSignal = '-';
+    status = BotStatus.connecting;
     notifyListeners();
 
-    _bot = TradingBot(
-      config: config,
-      onLog: log,
-      onSignal: (p) {
+    await _requestPermissions();
+    _initService();
+
+    final result = await FlutterForegroundTask.startService(
+      serviceId: 256,
+      notificationTitle: 'Deriv AI Bot',
+      notificationText: 'Conectando a Deriv...',
+      notificationButtons: const [
+        NotificationButton(id: 'btn_stop', text: 'PARAR'),
+      ],
+      callback: startBotTaskCallback,
+    );
+
+    switch (result) {
+      case ServiceRequestSuccess():
+        log('Servico em segundo plano iniciado.');
+        FlutterForegroundTask.sendDataToTask({
+          'cmd': 'start',
+          'config': config.toJson(),
+        });
+      case ServiceRequestFailure(error: final e):
+        status = BotStatus.error;
+        log('ERRO: nao foi possivel iniciar o servico ($e)');
+        notifyListeners();
+    }
+  }
+
+  Future<void> stop() async {
+    status = BotStatus.stopped;
+    notifyListeners();
+    if (!Platform.isAndroid) return;
+    try {
+      FlutterForegroundTask.sendDataToTask({'cmd': 'stop'});
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      await FlutterForegroundTask.stopService();
+    } catch (_) {}
+  }
+
+  // ------------------------------------------------------------------
+  // Mensagens vindas do isolate do servico
+  // ------------------------------------------------------------------
+
+  void _onTaskData(Object data) {
+    final msg = decodeTaskData(data);
+    switch (msg['t']) {
+      case 'log':
+        final m = msg['m'];
+        if (m is String && m.isNotEmpty) log(m);
+        break;
+      case 'signal':
+        final p = (msg['p'] as num?)?.toDouble() ?? lastProbability;
         lastProbability = p;
         final dir = p >= 0.5 ? 'ALTA' : 'BAIXA';
         lastSignal = '$dir (${(p * 100).toStringAsFixed(1)}%)';
-        notifyListeners();
-      },
-      onAccount: (a) {
-        balance = a.balance;
-        currency = a.currency;
-        accountIsVirtual = a.isVirtual;
-        notifyListeners();
-      },
-      onTradeClosed: (r) {
-        pnl = r.pnl;
-        wins = r.wins;
-        losses = r.losses;
-        notifyListeners();
-      },
-      onStopped: (_) {
-        status = BotStatus.stopped;
-        notifyListeners();
-      },
-    );
-    status = BotStatus.connecting;
-    _bot!.start().then((_) {
-      if (_bot == null) return;
-      if (!_bot!.api.isConnected && status != BotStatus.stopped) {
-        status = BotStatus.error;
-        notifyListeners();
-      }
-    });
-  }
-
-  void stop() {
-    final bot = _bot;
-    _bot = null;
-    status = BotStatus.stopped;
+        break;
+      case 'account':
+        balance = (msg['bal'] as num?)?.toDouble() ?? balance;
+        currency = msg['cur'] as String? ?? currency;
+        accountIsVirtual = msg['virt'] as bool? ?? accountIsVirtual;
+        break;
+      case 'trade':
+        pnl = (msg['pnl'] as num?)?.toDouble() ?? pnl;
+        wins = (msg['wins'] as num?)?.toInt() ?? wins;
+        losses = (msg['losses'] as num?)?.toInt() ?? losses;
+        totalTrades++;
+        break;
+      case 'status':
+        final s = msg['s'];
+        if (s == 'running') {
+          status = BotStatus.running;
+        } else if (s == 'connecting') {
+          status = BotStatus.connecting;
+        } else if (s == 'stopped') {
+          status = BotStatus.stopped;
+        }
+        break;
+    }
     notifyListeners();
-    bot?.stop('Parado pelo usuario', notify: false);
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/ui.dart';
 import 'package:provider/provider.dart';
 
 import 'state/bot_state.dart';
@@ -6,6 +7,7 @@ import 'ui/home_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterForegroundTask.initCommunicationPort();
   runApp(const DerivBotApp());
 }
 
@@ -27,7 +29,7 @@ class DerivBotApp extends StatelessWidget {
           ),
           useMaterial3: true,
         ),
-        home: const HomeScreen(),
+        home: const WithForegroundTask(child: HomeScreen()),
       ),
     );
   }

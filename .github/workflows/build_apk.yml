@@ -32,11 +32,32 @@ jobs:
       - name: Generate platform folders (android)
         run: flutter create . --platforms=android --project-name deriv_trading_bot --org com.derivbot
 
-      - name: Add INTERNET permission
+      - name: Patch AndroidManifest (permissions + foreground service)
         run: |
-          f=android/app/src/main/AndroidManifest.xml
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$f"
-          grep -q "INTERNET" "$f" || exit 1
+          python3 - <<'PYEOF'
+          f = 'android/app/src/main/AndroidManifest.xml'
+          s = open(f).read()
+          perms = [
+              '<uses-permission android:name="android.permission.INTERNET"/>',
+              '<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>',
+              '<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>',
+              '<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>',
+              '<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>',
+          ]
+          inject = '\n    '.join(perms) + '\n    '
+          if 'FOREGROUND_SERVICE_DATA_SYNC' not in s:
+              s = s.replace('<application', inject + '<application', 1)
+          svc = ('        <service\n'
+                 '            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"\n'
+                 '            android:foregroundServiceType="dataSync"\n'
+                 '            android:exported="false" />\n')
+          if 'com.pravera.flutter_foreground_task.service.ForegroundService' not in s:
+              idx = s.rfind('</application>')
+              s = s[:idx] + svc + s[idx:]
+          open(f, 'w').write(s)
+          assert 'FOREGROUND_SERVICE_DATA_SYNC' in open(f).read(), 'patch failed'
+          print('AndroidManifest patched OK')
+          PYEOF
 
       - name: Remove generated placeholder test
         run: rm -f test/widget_test.dart
@@ -75,11 +96,32 @@ jobs:
       - name: Generate platform folders (android)
         run: flutter create . --platforms=android --project-name deriv_trading_bot --org com.derivbot
 
-      - name: Add INTERNET permission
+      - name: Patch AndroidManifest (permissions + foreground service)
         run: |
-          f=android/app/src/main/AndroidManifest.xml
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' "$f"
-          grep -q "INTERNET" "$f" || exit 1
+          python3 - <<'PYEOF'
+          f = 'android/app/src/main/AndroidManifest.xml'
+          s = open(f).read()
+          perms = [
+              '<uses-permission android:name="android.permission.INTERNET"/>',
+              '<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>',
+              '<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>',
+              '<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>',
+              '<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>',
+          ]
+          inject = '\n    '.join(perms) + '\n    '
+          if 'FOREGROUND_SERVICE_DATA_SYNC' not in s:
+              s = s.replace('<application', inject + '<application', 1)
+          svc = ('        <service\n'
+                 '            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"\n'
+                 '            android:foregroundServiceType="dataSync"\n'
+                 '            android:exported="false" />\n')
+          if 'com.pravera.flutter_foreground_task.service.ForegroundService' not in s:
+              idx = s.rfind('</application>')
+              s = s[:idx] + svc + s[idx:]
+          open(f, 'w').write(s)
+          assert 'FOREGROUND_SERVICE_DATA_SYNC' in open(f).read(), 'patch failed'
+          print('AndroidManifest patched OK')
+          PYEOF
 
       - name: Remove generated placeholder test
         run: rm -f test/widget_test.dart
