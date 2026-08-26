@@ -59,7 +59,10 @@ class TradingBot {
   Future<void> start() async {
     try {
       onLog('Autenticando na Deriv (nova API)...');
-      await api.connect(token: config.token, appId: config.appId);
+      await api.connect(
+          token: config.token,
+          appId: config.appId,
+          accountType: config.accountType);
 
       final account = await api.fetchAccount();
       currency = account.currency;
@@ -311,7 +314,10 @@ class TradingBot {
   Future<void> _openSessionSafely() async {
     // Reaproveita o mesmo cliente REST/token para novo OTP + socket.
     api.dispose();
-    await api.connect(token: config.token, appId: config.appId);
+    await api.connect(
+          token: config.token,
+          appId: config.appId,
+          accountType: config.accountType);
     final account = await api.fetchAccount();
     currency = account.currency;
     onAccount(account);

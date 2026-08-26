@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../models/bot_config.dart';
+
 class DerivApiException implements Exception {
   final String message;
   final String? code;
@@ -45,6 +47,7 @@ class DerivApi {
   StreamSubscription<dynamic>? _socketSub;
 
   String _token = '';
+  String _preferredAccountType = BotConfig.accountDemo;
   String _appId = '';
 
   /// Callback acionado quando a conexão cai inesperadamente.
@@ -57,6 +60,7 @@ class DerivApi {
   Future<void> connect({
     required String token,
     required String appId,
+    String accountType = BotConfig.accountDemo,
   }) async {
     if (token.trim().isEmpty) {
       throw const DerivApiException('Token vazio');
@@ -69,6 +73,8 @@ class DerivApi {
     }
     _token = token.trim();
     _appId = appId.trim();
+    _preferredAccountType =
+        accountType == BotConfig.accountReal ? BotConfig.accountReal : BotConfig.accountDemo;
     await _openSession();
   }
 
@@ -77,6 +83,15 @@ class DerivApi {
     final accountId = await _resolveAccountId();
     final wsUrl = await _requestOtpUrl(accountId);
     await _connectSocket(wsUrl);
+  }
+
+  /// Conta demo na plataforma nova usa prefixo DOT; conta real, ROT.
+  static bool isDemoAccountId(String id) {
+    final upper = id.toUpperCase();
+    if (upper.startsWith('DOT')) return true;
+    if (upper.startsWith('ROT')) return false;
+    // Fallback para o flag, quando presente.
+    return false;
   }
 
   Future<String> _resolveAccountId() async {
@@ -89,28 +104,30 @@ class DerivApi {
     if (list == null || list.isEmpty) {
       throw const DerivApiException('Nenhuma conta encontrada neste token.');
     }
-    Map<dynamic, dynamic> pick(Map<dynamic, dynamic> a, Map<dynamic, dynamic> b) {
-      final aVirtual = (a['is_virtual'] ?? a['isVirtual']) == 1 ||
-          (a['is_virtual'] ?? a['isVirtual']) == true;
-      final bVirtual = (b['is_virtual'] ?? b['isVirtual']) == 1 ||
-          (b['is_virtual'] ?? b['isVirtual']) == true;
-      if (aVirtual != bVirtual) return aVirtual ? a : b;
-      return a;
+
+    String idOf(Map<dynamic, dynamic> a) =>
+        (a['account_id'] ?? a['accountId'] ?? a['loginid'] ?? a['id'] ?? '')
+            .toString();
+
+    bool isDemo(Map<dynamic, dynamic> a) {
+      final flag = a['is_virtual'] ?? a['isVirtual'];
+      if (flag == 1 || flag == true) return true;
+      if (flag == 0 || flag == false) return false;
+      return isDemoAccountId(idOf(a));
     }
 
-    Map<dynamic, dynamic> chosen = list.first as Map<dynamic, dynamic>;
+    final wantDemo = _preferredAccountType != BotConfig.accountReal;
     for (final raw in list) {
-      chosen = pick(raw as Map<dynamic, dynamic>, chosen);
+      final a = raw as Map<dynamic, dynamic>;
+      if (isDemo(a) == wantDemo) {
+        final id = idOf(a);
+        if (id.isNotEmpty) return id;
+      }
     }
-    final id = chosen['account_id'] ??
-        chosen['accountId'] ??
-        chosen['loginid'] ??
-        chosen['id'];
-    if (id == null || id.toString().isEmpty) {
-      throw const DerivApiException(
-          'Resposta de contas sem account_id reconhecivel.');
-    }
-    return id.toString();
+    throw DerivApiException(
+      'Conta ${wantDemo ? "DEMO" : "REAL"} nao encontrada no seu token. '
+      'Contas disponiveis: ${list.map((e) => idOf(e as Map<dynamic, dynamic>)).join(", ")}.',
+    );
   }
 
   Future<String> _requestOtpUrl(String accountId) async {

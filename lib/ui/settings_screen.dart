@@ -20,6 +20,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _maxTrades;
 
   late String _symbol;
+  late String _accountType;
   late double _threshold;
   late int _duration;
   late bool _martingale;
@@ -45,6 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _takeProfit = TextEditingController(text: cfg.takeProfit.toString());
     _maxTrades = TextEditingController(text: cfg.maxTrades.toString());
     _symbol = cfg.symbol;
+    _accountType = cfg.accountType;
     _threshold = cfg.entryThreshold;
     _duration = cfg.durationTicks;
     _martingale = cfg.useMartingale;
@@ -91,6 +93,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'developers.deriv.com > Dashboard > registrar app do tipo '
                   'PAT e copiar o App ID gerado',
             ),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            initialValue: _accountType,
+            decoration: const InputDecoration(
+              labelText: 'Conta',
+              border: OutlineInputBorder(),
+              helperText:
+                  'DEMO usa a conta DOT (saldo virtual). REAL opera com '
+                  'dinheiro de verdade - comece sempre pela DEMO.',
+            ),
+            items: const [
+              DropdownMenuItem(
+                  value: BotConfig.accountDemo, child: Text('DEMO (recomendado)')),
+              DropdownMenuItem(
+                  value: BotConfig.accountReal,
+                  child: Text('REAL (dinheiro de verdade)',
+                      style: TextStyle(color: Colors.redAccent))),
+            ],
+            onChanged: (v) async {
+              final chosen = v ?? BotConfig.accountDemo;
+              if (chosen == BotConfig.accountReal) {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Usar conta REAL?'),
+                    content: const Text(
+                        'O bot vai operar com dinheiro de verdade e voce pode '
+                        'perder tudo que apostar. Tem certeza?'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancelar')),
+                      FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Sim, usar REAL')),
+                    ],
+                  ),
+                );
+                if (confirm != true) return;
+              }
+              setState(() => _accountType = chosen);
+            },
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
@@ -223,6 +268,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 token: _token.text.trim(),
                 appId: _appId.text.trim(),
                 symbol: _symbol,
+                accountType: _accountType,
                 baseStake: double.tryParse(_stake.text) ?? 1.0,
                 durationTicks: _duration,
                 entryThreshold: _threshold,

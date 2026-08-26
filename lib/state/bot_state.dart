@@ -64,6 +64,9 @@ class BotState extends ChangeNotifier {
       token: token ?? '',
       appId: map['appId'] as String? ?? '33wAcoYXHpsPdruTW0b7C',
       symbol: map['symbol'] as String? ?? 'R_100',
+      accountType: map['accountType'] as String? == BotConfig.accountReal
+          ? BotConfig.accountReal
+          : BotConfig.accountDemo,
       baseStake: (map['baseStake'] as num?)?.toDouble() ?? 1.0,
       durationTicks: map['durationTicks'] as int? ?? 5,
       entryThreshold: (map['entryThreshold'] as num?)?.toDouble() ?? 0.62,
@@ -90,6 +93,7 @@ class BotState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, jsonEncode({
       'symbol': config.symbol,
+      'accountType': config.accountType,
       'baseStake': config.baseStake,
       'durationTicks': config.durationTicks,
       'entryThreshold': config.entryThreshold,

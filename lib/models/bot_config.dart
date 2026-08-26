@@ -1,7 +1,13 @@
 class BotConfig {
+  static const String accountDemo = 'demo';
+  static const String accountReal = 'real';
+
   final String token;
   final String appId;
   final String symbol;
+
+  /// 'demo' (padrao, seguro) ou 'real'.
+  final String accountType;
   final double baseStake;
   final int durationTicks;
   final double entryThreshold;
@@ -16,6 +22,7 @@ class BotConfig {
     required this.token,
     this.appId = '33wAcoYXHpsPdruTW0b7C',
     required this.symbol,
+    this.accountType = accountDemo,
     this.baseStake = 1.0,
     this.durationTicks = 5,
     this.entryThreshold = 0.62,
@@ -30,6 +37,7 @@ class BotConfig {
   BotConfig copyWith({
     String? token,
     String? appId,
+    String? accountType,
     String? symbol,
     double? baseStake,
     int? durationTicks,
@@ -44,6 +52,7 @@ class BotConfig {
     return BotConfig(
       token: token ?? this.token,
       appId: appId ?? this.appId,
+      accountType: accountType ?? this.accountType,
       symbol: symbol ?? this.symbol,
       baseStake: baseStake ?? this.baseStake,
       durationTicks: durationTicks ?? this.durationTicks,
