@@ -153,7 +153,9 @@ class TradingBot {
     if (probUp >= config.entryThreshold) {
       _openTrade('CALL', probUp);
     } else if (probUp <= 1 - config.entryThreshold) {
-      _openTrade('PUT', probUp);
+      // Sinal PUT: exibe a confianca da direcao escolhida (probabilidade de
+      // queda = 1 - probUp), para bater com o limiar configurado pelo usuario.
+      _openTrade('PUT', 1 - probUp);
     }
   }
 
