@@ -207,16 +207,41 @@ class TradingBot {
     final timeout = Duration(
       seconds: config.durationTicks * 2 + 60 + _martingaleLevel * 30,
     );
-    _contractWatchdog = Timer(timeout, () {
+    _contractWatchdog = Timer(timeout, () async {
       if (!_inTrade || _disposed) return;
-      onLog('AVISO: contrato #$contractId sem conclusao em ${timeout.inSeconds}s.');
       final id = _openContractId;
-      if (id != null && api.isConnected) {
-        api.sell(id).then((_) => onLog('Contrato #$id vendido a mercado.')).catchError((Object e) {
-          onLog('Nao foi possivel vender #$id: $e');
+      if (id == null || !api.isConnected) {
+        _releaseContractTracking();
+        return;
+      }
+      onLog('AVISO: contrato #$id sem conclusao em ${timeout.inSeconds}s.');
+      try {
+        final open = await api.fetchOpenContract(id);
+        final stillOpen =
+            open != null && (open['is_sold'] == 0 || open['is_sold'] == null);
+        if (stillOpen) {
+          // Ainda aberto a mercado: tenta vender para nao ficar pendurado.
+          try {
+            await api.sell(id);
+            onLog('Contrato #$id vendido a mercado.');
+          } catch (e) {
+            // Sumiu entre a consulta e a venda => ja encerrou. Sem erro.
+            onLog('Contrato #$id encerrou antes da venda.');
+            _releaseContractTracking();
+          }
+          return;
+        }
+        // Ja nao esta aberto: registra o desfecho se o servidor reportou.
+        final sold = open != null && open['is_sold'] == 1;
+        final profit = (open?['profit'] as num?)?.toDouble() ?? 0;
+        if (sold && profit != 0) {
+          _closeTrade(profit);
+        } else {
+          onLog('Contrato #$id encerrou automaticamente.');
           _releaseContractTracking();
-        });
-      } else {
+        }
+      } catch (_) {
+        onLog('Nao foi possivel consultar o contrato #$id.');
         _releaseContractTracking();
       }
     });

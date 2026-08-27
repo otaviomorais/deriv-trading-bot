@@ -415,6 +415,17 @@ class DerivApi {
     return subscribe({'proposal_open_contract': 1, 'subscribe': 1});
   }
 
+  /// Consulta o estado atual de um contrato (sem subscribe). Retorna o
+  /// contrato se ainda estiver aberto; null se nao existir entre as
+  /// posicoes abertas (ex: ja expirou/foi vendido).
+  Future<Map<String, dynamic>?> fetchOpenContract(int contractId) async {
+    final res = await request({
+      'proposal_open_contract': 1,
+      'contract_id': contractId,
+    });
+    return res['proposal_open_contract'] as Map<String, dynamic>?;
+  }
+
   Future<void> sell(int contractId, {double price = 0}) async {
     await request({'sell': contractId, 'price': price});
   }
