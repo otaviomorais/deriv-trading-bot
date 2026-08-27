@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../models/bot_config.dart';
@@ -70,7 +72,17 @@ class BotTaskHandler extends TaskHandler {
     }
     _bot = TradingBot(
       config: config,
-      onLog: (m) => _send({'t': 'log', 'm': m}),
+      onLog: (m) {
+        // Logcat (capturável via `logcat -s flutter`) + arquivo no Download.
+        try {
+          File('/storage/emulated/0/Download/deriv_bot.log').writeAsStringSync(
+              '${DateTime.now().toIso8601String().substring(11, 19)} $m\n',
+              mode: FileMode.append,
+              flush: true);
+        } catch (_) {}
+        debugPrint('[derivbot] $m');
+        _send({'t': 'log', 'm': m});
+      },
       onSignal: (p) => _send({'t': 'signal', 'p': p}),
       onAccount: (a) => _send({
         't': 'account',

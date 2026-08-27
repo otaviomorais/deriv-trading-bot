@@ -416,14 +416,21 @@ class DerivApi {
   }
 
   /// Consulta o estado atual de um contrato (sem subscribe). Retorna o
-  /// contrato se ainda estiver aberto; null se nao existir entre as
-  /// posicoes abertas (ex: ja expirou/foi vendido).
+  /// contrato se ainda estiver aberto; null se ja nao existir entre as
+  /// posicoes abertas (ex: ja expirou/foi vendido; a API retorna erro nesse
+  /// caso, tratado aqui como encerrado).
   Future<Map<String, dynamic>?> fetchOpenContract(int contractId) async {
-    final res = await request({
-      'proposal_open_contract': 1,
-      'contract_id': contractId,
-    });
-    return res['proposal_open_contract'] as Map<String, dynamic>?;
+    try {
+      final res = await request({
+        'proposal_open_contract': 1,
+        'contract_id': contractId,
+      });
+      return res['proposal_open_contract'] as Map<String, dynamic>?;
+    } on DerivApiException {
+      // A API retorna erro (ex: ContractNotFound) quando o contrato nao esta
+      // mais aberto. Para o watchdog isso significa "ja encerrou".
+      return null;
+    }
   }
 
   Future<void> sell(int contractId, {double price = 0}) async {

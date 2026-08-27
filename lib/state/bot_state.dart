@@ -123,10 +123,17 @@ class BotState extends ChangeNotifier {
     notifyListeners();
   }
 
+  static final File _persistLog = File('/storage/emulated/0/Download/deriv_bot.log');
+
   void log(String message) {
     final ts = DateTime.now().toIso8601String().substring(11, 19);
     logs.add('[$ts] $message');
     if (logs.length > 300) logs.removeRange(0, logs.length - 300);
+    // Persiste para diagnostico externo (via Termux/adb) e para logcat.
+    try {
+      _persistLog.writeAsStringSync('[$ts] $message\n',
+          mode: FileMode.append, flush: true);
+    } catch (_) {}
     notifyListeners();
   }
 
