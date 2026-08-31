@@ -74,7 +74,8 @@ void main() {
     test('tryFromJson ignora conteudo invalido', () {
       expect(MLStrategy.tryFromJson(''), isNull);
       expect(MLStrategy.tryFromJson('nao-json'), isNull);
-      expect(MLStrategy.tryFromJson('{bias: x}'), isNotNull);
+      expect(MLStrategy.tryFromJson('{bias: x}'), isNull);
+      expect(MLStrategy.tryFromJson('{bias: 1}'), isNotNull);
     });
 
     test('warmUp respeita o alvo de N ticks', () {
