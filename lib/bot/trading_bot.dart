@@ -177,19 +177,19 @@ class TradingBot {
     try {
       final int contractId;
       if (config.contractMode == BotConfig.modeHigherLower) {
-        final hlType = contractType == 'CALL' ? 'HIGHER' : 'LOWER';
         final res = await api.buyHigherLower(
-          contractType: hlType,
+          contractType: contractType,
           stake: currentStake,
           duration: config.durationTicks,
           symbol: config.symbol,
           currency: currency,
           targetReturnPct: config.targetPayoutPct,
+          currentSpot: _closes.isNotEmpty ? _closes.last : null,
         );
         contractId = res.contractId;
         onLog(
-          'Contrato #$contractId aberto ($hlType, barreira ${res.proposal.barrier}, '
-          'retorno ~${res.proposal.returnPct.toStringAsFixed(1)}%).',
+          'Contrato #$contractId aberto ($contractType + barreira '
+          '${res.proposal.barrier}, retorno ~${res.proposal.returnPct.toStringAsFixed(1)}%).',
         );
       } else {
         contractId = await api.buyContract(

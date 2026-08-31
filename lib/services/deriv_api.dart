@@ -446,27 +446,21 @@ class DerivApi {
     return buy['contract_id'] as int;
   }
 
-  /// Propoe um contrato higher/lower com barreira RELATIVA ao spot
-  /// (ex.: '-10.0000' = 10 abaixo do spot; '+10.0000' = 10 acima).
-  Future<Map<String, dynamic>> _proposeWithBarrier({
-    required String contractType,
-    required double stake,
-    required int duration,
-    required String symbol,
-    required String currency,
-    required String barrier,
-  }) async {
+  /// Spot atual do simbolo (para fallback de barreira absoluta).
+  Future<double> fetchSpot(String symbol) async {
     final res = await request({
-      'proposal': 1,
-      'amount': stake,
-      'basis': 'stake',
-      'contract_type': contractType,
-      'currency': currency,
-      'duration': duration,
-      'duration_unit': 't',
-      'underlying_symbol': symbol,
-      'barrier': barrier,
+      'ticks_history': symbol,
+      'adjust_start_time': 1,
+      'count': 1,
+      'end': 'latest',
+      'style': 'ticks',
     });
+    final history = res['history'] as Map<String, dynamic>;
+    final prices = history['prices'] as List;
+    return prices.isEmpty ? 0 : _asDouble(prices.last);
+  }
+
+  Map<String, dynamic> _ensureProposal(Map<String, dynamic> res) {
     final p = res['proposal'] as Map<String, dynamic>?;
     if (p == null || p['id'] == null) {
       throw const DerivApiException('Proposal higher/lower sem id.');
@@ -474,13 +468,59 @@ class DerivApi {
     return p;
   }
 
+  /// Propoe um higher/lower usando o proprio tipo do sinal (CALL/PUT) com
+  /// barreira de margem: CALL -> barreira NEGATIVA (abaixo do spot);
+  /// PUT -> barreira POSITIVA (acima do spot). Tenta barreira relativa
+  /// (+/-) e, se a API recusar, barreira absoluta a partir do spot.
+  Future<Map<String, dynamic>> _proposeWithBarrier({
+    required String contractType,
+    required double stake,
+    required int duration,
+    required String symbol,
+    required String currency,
+    required double offset,
+    double? spot,
+  }) async {
+    final sign = contractType == 'CALL' ? -1.0 : 1.0;
+
+    Map<String, dynamic> call(String barrier) => {
+          'proposal': 1,
+          'amount': stake,
+          'basis': 'stake',
+          'contract_type': contractType,
+          'currency': currency,
+          'duration': duration,
+          'duration_unit': 't',
+          'underlying_symbol': symbol,
+          'barrier': barrier,
+        };
+
+    Object? lastErr;
+    try {
+      return _ensureProposal(
+          await request(call((sign * offset).toStringAsFixed(4))));
+    } catch (e) {
+      lastErr = e;
+    }
+    if (spot != null && spot > 0) {
+      try {
+        return _ensureProposal(
+            await request(call((spot + sign * offset).toStringAsFixed(4))));
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    if (lastErr is DerivApiException) throw lastErr;
+    throw const DerivApiException('Proposal higher/lower recusado.');
+  }
+
   /// Encontra a barreira que entrega ~targetReturnPct% de retorno.
   ///
-  /// HIGHER usa barreira NEGATIVA (abaixo do spot = margem para sinal CALL);
-  /// LOWER usa barreira POSITIVA (acima do spot = margem para sinal PUT).
+  /// CALL usa barreira NEGATIVA (abaixo do spot = margem para sinal CALL);
+  /// PUT usa barreira POSITIVA (acima do spot = margem para sinal PUT).
   ///
   /// Busca binaria: o retorno cai monotonicamente quanto maior a margem
-  /// (barreira mais "facil"). Ancoragem em ~spot p/ obter o spot e o maximo.
+  /// (barreira mais "facil"). O erro real da API e preservado no log.
   Future<BarrierProposal> findBarrierForReturn({
     required String contractType,
     required double stake,
@@ -488,16 +528,24 @@ class DerivApi {
     required String symbol,
     required String currency,
     required double targetReturnPct,
+    double? currentSpot,
   }) async {
-    final sign = contractType == 'HIGHER' ? -1.0 : 1.0;
-
     double returnPctOf(Map<String, dynamic> p) {
       final payout = _asDouble(p['payout']);
       return stake > 0 ? (payout - stake) / stake * 100 : 0.0;
     }
 
+    double? spot =
+        (currentSpot != null && currentSpot > 0) ? currentSpot : null;
+    if (spot == null) {
+      try {
+        spot = await fetchSpot(symbol);
+      } catch (_) {}
+    }
+
+    String? lastErr;
     Future<BarrierProposal?> probe(double offset) async {
-      final barrier = (sign * offset).toStringAsFixed(4);
+      final relBarrier = (contractType == 'CALL' ? -1.0 : 1.0) * offset;
       try {
         final p = await _proposeWithBarrier(
           contractType: contractType,
@@ -505,17 +553,19 @@ class DerivApi {
           duration: duration,
           symbol: symbol,
           currency: currency,
-          barrier: barrier,
+          offset: offset,
+          spot: spot,
         );
         return BarrierProposal(
           proposalId: p['id'] as String,
-          barrier: barrier,
+          barrier: relBarrier.toStringAsFixed(4),
           returnPct: returnPctOf(p),
           payout: _asDouble(p['payout']),
           spot: _asDouble(p['spot']),
         );
-      } catch (_) {
-        return null; // barreira fora do range aceito pela Deriv.
+      } catch (e) {
+        lastErr = e is DerivApiException ? e.toString() : '$e';
+        return null;
       }
     }
 
@@ -526,8 +576,10 @@ class DerivApi {
       if (anchor != null) break;
     }
     if (anchor == null) {
-      throw const DerivApiException(
-          'Nao foi possivel propor o contrato higher/lower.');
+      throw DerivApiException(
+        'Nao foi possivel propor o higher/lower ($contractType '
+        '${duration}t $symbol): ${lastErr ?? 'resposta invalida'}',
+      );
     }
     if (anchor.returnPct <= targetReturnPct) {
       // Mesmo na barreira do spot o retorno ja e menor que o alvo.
@@ -535,7 +587,9 @@ class DerivApi {
     }
 
     double lo = 0;
-    double hi = anchor.spot * 0.02; // margem maxima: 2% do spot
+    final baseSpot = anchor.spot > 0 ? anchor.spot : (spot ?? 0);
+    double hi = baseSpot * 0.02; // margem maxima: 2% do spot
+    if (hi <= 0) hi = 1.0;
     BarrierProposal best = anchor;
     for (var i = 0; i < 14; i++) {
       final mid = (lo + hi) / 2;
@@ -562,6 +616,7 @@ class DerivApi {
     required String symbol,
     required String currency,
     required double targetReturnPct,
+    double? currentSpot,
   }) async {
     final proposal = await findBarrierForReturn(
       contractType: contractType,
@@ -570,6 +625,7 @@ class DerivApi {
       symbol: symbol,
       currency: currency,
       targetReturnPct: targetReturnPct,
+      currentSpot: currentSpot,
     );
     final res = await request({
       'buy': proposal.proposalId,
