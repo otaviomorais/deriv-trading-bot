@@ -20,6 +20,27 @@ Bot de trading para a corretora **Deriv** usando análise técnica + machine lea
 - Token armazenado com segurança (Android Keystore via `flutter_secure_storage`)
 - UI dark com saldo (DEMO/REAL), PnL, sinal ao vivo e log de operações
 
+## Novidades
+- **Modo simulacao (paper trading):** contratos simulados, sem movimentar
+  dinheiro. Ative em Configuracoes para validar a estrategia antes da REAL.
+- **Alvo do modelo alinhado ao contrato:** o ML agora treina prevendo a
+  direcao N ticks a frente (mesma duracao do contrato), em vez do proximo tick.
+- **Modelo persistente:** os pesos da IA sobrevivem a restarts do app.
+- **Stop Loss diario por calendario:** o prejuizo do dia persiste entre
+  restarts (antes resetava ao reabrir o app).
+- **Cooldown entre operacoes:** evita abrir contrato atras de contrato.
+- **Validacao de configuracoes:** stake/stop/take-profit invalidos sao
+  recusados com aviso.
+- **AndroidManifest versionado** em `platform/AndroidManifest.xml` (o CI
+  apenas copia o arquivo, sem patch de texto fragil).
+
+### Verificando a abertura de contratos pelo terminal
+```bash
+dart run bin/diagnose.dart SEU_TOKEN_PAT SEU_APP_ID R_100 --buy
+```
+O `--buy` abre um contrato real (use conta DEMO) e vende na sequencia,
+validando o fluxo completo de compra na API.
+
 ## Como gerar o APK via GitHub Actions
 
 1. Crie um repositório no GitHub (ex.: `deriv-trading-bot`).

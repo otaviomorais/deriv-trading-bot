@@ -56,6 +56,16 @@ class HomeScreen extends StatelessWidget {
                     color: Colors.amberAccent,
                   ),
                 ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _StatCard(
+                    label: 'PnL do dia',
+                    value: '${state.dailyPnl >= 0 ? '+' : ''}\$${state.dailyPnl.toStringAsFixed(2)}',
+                    color: state.dailyPnl >= 0
+                        ? Colors.greenAccent
+                        : Colors.redAccent,
+                  ),
+                ),
               ],
             ),
           ),
@@ -97,6 +107,7 @@ class HomeScreen extends StatelessWidget {
                   ? 'Status: RECONECTANDO (${state.config.symbol})'
                   : state.isRunning
                       ? 'Status: OPERANDO (${state.config.symbol})'
+                          '${state.config.paperTrading ? ' - PAPER' : ''}'
                       : 'Status: PARADO',
               style: TextStyle(
                 color: state.isRunning ? Colors.greenAccent : Colors.grey,

@@ -57,5 +57,35 @@ void main() {
       expect(s.trainedSamples, 0);
       expect(s.predictProbability(f), 0.5);
     });
+
+    test('toJson/fromJson preserva pesos e previsoes', () {
+      final s = MLStrategy();
+      final closes = <double>[for (var i = 0; i < 60; i++) 100 + i * 0.2];
+      final f = s.buildFeatures(closes)!;
+      for (var i = 0; i < 30; i++) {
+        s.train(f, i.isEven);
+      }
+      final before = s.predictProbability(f);
+      final restored = MLStrategy.fromJson(s.toJson());
+      expect(restored.trainedSamples, s.trainedSamples);
+      expect(restored.predictProbability(f), closeTo(before, 1e-9));
+    });
+
+    test('tryFromJson ignora conteudo invalido', () {
+      expect(MLStrategy.tryFromJson(''), isNull);
+      expect(MLStrategy.tryFromJson('nao-json'), isNull);
+      expect(MLStrategy.tryFromJson('{bias: x}'), isNotNull);
+    });
+
+    test('warmUp respeita o alvo de N ticks', () {
+      final s = MLStrategy()..targetHorizon = 5;
+      final closes = <double>[
+        for (var i = 0; i < 120; i++) 100 + math.sin(i / 5) * 2
+      ];
+      s.warmUp(closes);
+      expect(s.trainedSamples, greaterThan(0));
+      // Com horizonte 5, sao treinadas as amostras i em [_maxWindow, len-1-h].
+      expect(s.trainedSamples, lessThanOrEqualTo(120 - 5 - 25 + 1));
+    });
   });
 }

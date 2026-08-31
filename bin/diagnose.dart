@@ -1,7 +1,10 @@
 // Diagnostico de conexao com a nova plataforma Deriv.
 //
 // Uso (na raiz do projeto, com Dart SDK instalado):
-//   dart run bin/diagnose.dart <token_pat> <app_id> [simbolo]
+//   dart run bin/diagnose.dart <token_pat> <app_id> [simbolo] [--buy]
+//
+// `--buy` abre um contrato REAL (use conta DEMO) e vende em seguida, para
+// verificar o fluxo completo de abertura de contrato.
 //
 // Replica exatamente o fluxo do app:
 //   1. GET  /trading/v1/options/accounts          -> lista contas
@@ -12,9 +15,11 @@ import 'dart:convert';
 import 'dart:io';
 
 Future<void> main(List<String> args) async {
-  final token = args.isNotEmpty ? args[0] : '';
-  final appId = args.length > 1 ? args[1] : '';
-  final symbol = args.length > 2 ? args[2] : 'R_100';
+  final testBuy = args.contains('--buy');
+  final positional = args.where((a) => a != '--buy').toList();
+  final token = positional.isNotEmpty ? positional[0] : '';
+  final appId = positional.length > 1 ? positional[1] : '';
+  final symbol = positional.length > 2 ? positional[2] : 'R_100';
 
   void ok(String m) => stdout.writeln('[OK]    $m');
   void fail(String m) => stdout.writeln('[FALHA] $m');
@@ -28,7 +33,7 @@ Future<void> main(List<String> args) async {
   stdout.writeln('============================================================');
 
   if (token.isEmpty || appId.isEmpty) {
-    fail('Uso: dart run bin/diagnose.dart <token> <app_id> [simbolo]');
+    fail('Uso: dart run bin/diagnose.dart <token> <app_id> [simbolo] [--buy]');
     fail('Sem App ID registrado em developers.deriv.com nada funciona.');
     exit(1);
   }
@@ -156,6 +161,21 @@ Future<void> main(List<String> args) async {
       final pid = prop['proposal']['id'];
       ok('proposal CALL id=${pid.toString().substring(0, 12)}... '
           '(spot ${prop['proposal']['spot']}, payout ${prop['proposal']['payout']})');
+      if (testBuy) {
+        final buyRes = await send({'buy': pid, 'price': 1});
+        if (buyRes['error'] == null) {
+          final cid = buyRes['buy']['contract_id'];
+          ok('COMPRA OK: contrato #$cid aberto!');
+          final sellRes = await send({'sell': cid, 'price': 0});
+          if (sellRes['error'] == null) {
+            ok('venda OK: contrato #$cid encerrado.');
+          } else {
+            fail('venda: ${sellRes['error']}');
+          }
+        } else {
+          fail('compra: ${buyRes['error']}');
+        }
+      }
     } else {
       fail('proposal: ${prop['error']}');
     }

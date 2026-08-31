@@ -18,6 +18,12 @@ class BotConfig {
   final int martingaleMaxLevels;
   final int maxTrades;
 
+  /// Simula contratos sem dinheiro (nao chama buy/sell na Deriv).
+  final bool paperTrading;
+
+  /// Ticks de espera entre o fechamento de uma operacao e a proxima entrada.
+  final int cooldownTicks;
+
   const BotConfig({
     required this.token,
     this.appId = '33wAcoYXHpsPdruTW0b7C',
@@ -32,6 +38,8 @@ class BotConfig {
     this.martingaleFactor = 2.0,
     this.martingaleMaxLevels = 3,
     this.maxTrades = 100,
+    this.paperTrading = false,
+    this.cooldownTicks = 3,
   });
 
   BotConfig copyWith({
@@ -48,6 +56,8 @@ class BotConfig {
     double? martingaleFactor,
     int? martingaleMaxLevels,
     int? maxTrades,
+    bool? paperTrading,
+    int? cooldownTicks,
   }) {
     return BotConfig(
       token: token ?? this.token,
@@ -63,6 +73,8 @@ class BotConfig {
       martingaleFactor: martingaleFactor ?? this.martingaleFactor,
       martingaleMaxLevels: martingaleMaxLevels ?? this.martingaleMaxLevels,
       maxTrades: maxTrades ?? this.maxTrades,
+      paperTrading: paperTrading ?? this.paperTrading,
+      cooldownTicks: cooldownTicks ?? this.cooldownTicks,
     );
   }
 
@@ -80,6 +92,8 @@ class BotConfig {
         'martingaleFactor': martingaleFactor,
         'martingaleMaxLevels': martingaleMaxLevels,
         'maxTrades': maxTrades,
+        'paperTrading': paperTrading,
+        'cooldownTicks': cooldownTicks,
       };
 
   factory BotConfig.fromJson(Map<String, dynamic> j) => BotConfig(
@@ -98,5 +112,7 @@ class BotConfig {
         martingaleFactor: (j['martingaleFactor'] as num?)?.toDouble() ?? 2.0,
         martingaleMaxLevels: j['martingaleMaxLevels'] as int? ?? 3,
         maxTrades: j['maxTrades'] as int? ?? 100,
+        paperTrading: j['paperTrading'] as bool? ?? false,
+        cooldownTicks: j['cooldownTicks'] as int? ?? 3,
       );
 }
