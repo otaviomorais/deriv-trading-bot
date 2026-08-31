@@ -1,6 +1,8 @@
 class BotConfig {
   static const String accountDemo = 'demo';
   static const String accountReal = 'real';
+  static const String modeRiseFall = 'risefall';
+  static const String modeHigherLower = 'higherlower';
 
   final String token;
   final String appId;
@@ -17,6 +19,10 @@ class BotConfig {
   final double martingaleFactor;
   final int martingaleMaxLevels;
   final int maxTrades;
+  /// 'risefall' (padrao) ou 'higherlower' (barreiras invertidas com margem).
+  final String contractMode;
+  /// Retorno alvo (%) por operacao no modo higher/lower (define a barreira).
+  final double targetPayoutPct;
 
   const BotConfig({
     required this.token,
@@ -32,6 +38,8 @@ class BotConfig {
     this.martingaleFactor = 2.0,
     this.martingaleMaxLevels = 3,
     this.maxTrades = 100,
+    this.contractMode = modeRiseFall,
+    this.targetPayoutPct = 30.0,
   });
 
   BotConfig copyWith({
@@ -48,6 +56,8 @@ class BotConfig {
     double? martingaleFactor,
     int? martingaleMaxLevels,
     int? maxTrades,
+    String? contractMode,
+    double? targetPayoutPct,
   }) {
     return BotConfig(
       token: token ?? this.token,
@@ -63,6 +73,8 @@ class BotConfig {
       martingaleFactor: martingaleFactor ?? this.martingaleFactor,
       martingaleMaxLevels: martingaleMaxLevels ?? this.martingaleMaxLevels,
       maxTrades: maxTrades ?? this.maxTrades,
+      contractMode: contractMode ?? this.contractMode,
+      targetPayoutPct: targetPayoutPct ?? this.targetPayoutPct,
     );
   }
 
@@ -80,6 +92,8 @@ class BotConfig {
         'martingaleFactor': martingaleFactor,
         'martingaleMaxLevels': martingaleMaxLevels,
         'maxTrades': maxTrades,
+        'contractMode': contractMode,
+        'targetPayoutPct': targetPayoutPct,
       };
 
   factory BotConfig.fromJson(Map<String, dynamic> j) => BotConfig(
@@ -98,5 +112,9 @@ class BotConfig {
         martingaleFactor: (j['martingaleFactor'] as num?)?.toDouble() ?? 2.0,
         martingaleMaxLevels: j['martingaleMaxLevels'] as int? ?? 3,
         maxTrades: j['maxTrades'] as int? ?? 100,
+        contractMode: j['contractMode'] == BotConfig.modeHigherLower
+            ? BotConfig.modeHigherLower
+            : BotConfig.modeRiseFall,
+        targetPayoutPct: (j['targetPayoutPct'] as num?)?.toDouble() ?? 30.0,
       );
 }

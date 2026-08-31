@@ -90,6 +90,10 @@ class BotState extends ChangeNotifier {
       martingaleFactor: (map['martingaleFactor'] as num?)?.toDouble() ?? 2.0,
       martingaleMaxLevels: map['martingaleMaxLevels'] as int? ?? 3,
       maxTrades: map['maxTrades'] as int? ?? 100,
+      contractMode: map['contractMode'] == BotConfig.modeHigherLower
+          ? BotConfig.modeHigherLower
+          : BotConfig.modeRiseFall,
+      targetPayoutPct: (map['targetPayoutPct'] as num?)?.toDouble() ?? 30.0,
     );
 
     if (map.containsKey('token')) {
@@ -116,6 +120,8 @@ class BotState extends ChangeNotifier {
       'martingaleFactor': config.martingaleFactor,
       'martingaleMaxLevels': config.martingaleMaxLevels,
       'maxTrades': config.maxTrades,
+      'contractMode': config.contractMode,
+      'targetPayoutPct': config.targetPayoutPct,
     }));
     try {
       await _secureStorage.write(key: _secureTokenKey, value: config.token);

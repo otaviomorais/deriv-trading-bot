@@ -32,6 +32,32 @@ class AccountInfo {
   });
 }
 
+class BarrierProposal {
+  final String proposalId;
+  /// Barreira relativa ao spot no formato da API (ex.: '-12.5000').
+  final String barrier;
+  /// Retorno esperado em % se vencer: (payout - stake) / stake * 100.
+  final double returnPct;
+  final double payout;
+  final double spot;
+  const BarrierProposal({
+    required this.proposalId,
+    required this.barrier,
+    required this.returnPct,
+    required this.payout,
+    required this.spot,
+  });
+}
+
+class BarrierContractResult {
+  final int contractId;
+  final BarrierProposal proposal;
+  const BarrierContractResult({
+    required this.contractId,
+    required this.proposal,
+  });
+}
+
 class _Subscription {
   final StreamController<Map<String, dynamic>> controller;
   final Map<String, dynamic> payload;
@@ -418,6 +444,142 @@ class DerivApi {
     });
     final buy = res['buy'] as Map<String, dynamic>;
     return buy['contract_id'] as int;
+  }
+
+  /// Propoe um contrato higher/lower com barreira RELATIVA ao spot
+  /// (ex.: '-10.0000' = 10 abaixo do spot; '+10.0000' = 10 acima).
+  Future<Map<String, dynamic>> _proposeWithBarrier({
+    required String contractType,
+    required double stake,
+    required int duration,
+    required String symbol,
+    required String currency,
+    required String barrier,
+  }) async {
+    final res = await request({
+      'proposal': 1,
+      'amount': stake,
+      'basis': 'stake',
+      'contract_type': contractType,
+      'currency': currency,
+      'duration': duration,
+      'duration_unit': 't',
+      'underlying_symbol': symbol,
+      'barrier': barrier,
+    });
+    final p = res['proposal'] as Map<String, dynamic>?;
+    if (p == null || p['id'] == null) {
+      throw const DerivApiException('Proposal higher/lower sem id.');
+    }
+    return p;
+  }
+
+  /// Encontra a barreira que entrega ~targetReturnPct% de retorno.
+  ///
+  /// HIGHER usa barreira NEGATIVA (abaixo do spot = margem para sinal CALL);
+  /// LOWER usa barreira POSITIVA (acima do spot = margem para sinal PUT).
+  ///
+  /// Busca binaria: o retorno cai monotonicamente quanto maior a margem
+  /// (barreira mais "facil"). Ancoragem em ~spot p/ obter o spot e o maximo.
+  Future<BarrierProposal> findBarrierForReturn({
+    required String contractType,
+    required double stake,
+    required int duration,
+    required String symbol,
+    required String currency,
+    required double targetReturnPct,
+  }) async {
+    final sign = contractType == 'HIGHER' ? -1.0 : 1.0;
+
+    double returnPctOf(Map<String, dynamic> p) {
+      final payout = _asDouble(p['payout']);
+      return stake > 0 ? (payout - stake) / stake * 100 : 0.0;
+    }
+
+    Future<BarrierProposal?> probe(double offset) async {
+      final barrier = (sign * offset).toStringAsFixed(4);
+      try {
+        final p = await _proposeWithBarrier(
+          contractType: contractType,
+          stake: stake,
+          duration: duration,
+          symbol: symbol,
+          currency: currency,
+          barrier: barrier,
+        );
+        return BarrierProposal(
+          proposalId: p['id'] as String,
+          barrier: barrier,
+          returnPct: returnPctOf(p),
+          payout: _asDouble(p['payout']),
+          spot: _asDouble(p['spot']),
+        );
+      } catch (_) {
+        return null; // barreira fora do range aceito pela Deriv.
+      }
+    }
+
+    // Ancoragem ~ no spot (retorno maximo possivel para o alvo).
+    BarrierProposal? anchor;
+    for (final off in const [0.0, 0.01, 0.1, 1.0, 5.0]) {
+      anchor = await probe(off);
+      if (anchor != null) break;
+    }
+    if (anchor == null) {
+      throw const DerivApiException(
+          'Nao foi possivel propor o contrato higher/lower.');
+    }
+    if (anchor.returnPct <= targetReturnPct) {
+      // Mesmo na barreira do spot o retorno ja e menor que o alvo.
+      return anchor;
+    }
+
+    double lo = 0;
+    double hi = anchor.spot * 0.02; // margem maxima: 2% do spot
+    BarrierProposal best = anchor;
+    for (var i = 0; i < 14; i++) {
+      final mid = (lo + hi) / 2;
+      final p = await probe(mid);
+      if (p == null) break;
+      if ((p.returnPct - targetReturnPct).abs() <
+          (best.returnPct - targetReturnPct).abs()) {
+        best = p;
+      }
+      if (p.returnPct > targetReturnPct) {
+        lo = mid; // precisa de mais margem para reduzir o retorno
+      } else {
+        hi = mid; // passou do alvo
+      }
+    }
+    return best;
+  }
+
+  /// Compra um higher/lower com a barreira calculada para o retorno alvo.
+  Future<BarrierContractResult> buyHigherLower({
+    required String contractType,
+    required double stake,
+    required int duration,
+    required String symbol,
+    required String currency,
+    required double targetReturnPct,
+  }) async {
+    final proposal = await findBarrierForReturn(
+      contractType: contractType,
+      stake: stake,
+      duration: duration,
+      symbol: symbol,
+      currency: currency,
+      targetReturnPct: targetReturnPct,
+    );
+    final res = await request({
+      'buy': proposal.proposalId,
+      'price': stake,
+    });
+    final buy = res['buy'] as Map<String, dynamic>;
+    return BarrierContractResult(
+      contractId: buy['contract_id'] as int,
+      proposal: proposal,
+    );
   }
 
   Stream<Map<String, dynamic>> subscribeContract(int contractId) {

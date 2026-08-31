@@ -25,6 +25,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late int _duration;
   late bool _martingale;
   late int _martingaleLevels;
+  late String _contractMode;
+  late final TextEditingController _targetPayout;
 
   static const _symbols = {
     'R_10': 'Volatility 10',
@@ -51,6 +53,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _duration = cfg.durationTicks;
     _martingale = cfg.useMartingale;
     _martingaleLevels = cfg.martingaleMaxLevels;
+    _contractMode = cfg.contractMode;
+    _targetPayout = TextEditingController(text: cfg.targetPayoutPct.toString());
   }
 
   @override
@@ -61,6 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _maxLoss.dispose();
     _takeProfit.dispose();
     _maxTrades.dispose();
+    _targetPayout.dispose();
     super.dispose();
   }
 
@@ -147,6 +152,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 .toList(),
             onChanged: (v) => setState(() => _symbol = v ?? 'R_100'),
           ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            initialValue: _contractMode,
+            decoration: const InputDecoration(
+              labelText: 'Modo de contrato',
+              border: OutlineInputBorder(),
+              helperText:
+                  'Higher/Lower usa barreiras invertidas: para CALL a barreira '
+                  'fica ABAIXO do spot e para PUT ACIMA (margem de seguranca), '
+                  'com retorno alvo que define a barreira.',
+            ),
+            items: const [
+              DropdownMenuItem(
+                  value: BotConfig.modeRiseFall,
+                  child: Text('Rise/Fall (CALL/PUT)')),
+              DropdownMenuItem(
+                  value: BotConfig.modeHigherLower,
+                  child: Text('Higher/Lower (barreiras + margem)')),
+            ],
+            onChanged: (v) =>
+                setState(() => _contractMode = v ?? BotConfig.modeRiseFall),
+          ),
+          if (_contractMode == BotConfig.modeHigherLower) ...[
+            const SizedBox(height: 16),
+            TextField(
+              controller: _targetPayout,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Retorno alvo (%) por operacao',
+                border: OutlineInputBorder(),
+                helperText:
+                    'Ex.: 30 = o bot calcula a barreira para pagar ~30% se '
+                    'vencer. Menor retorno = mais margem e mais chance.',
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             children: [
@@ -278,6 +319,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 martingaleFactor: 2.0,
                 martingaleMaxLevels: _martingaleLevels,
                 maxTrades: int.tryParse(_maxTrades.text) ?? 100,
+                contractMode: _contractMode,
+                targetPayoutPct: double.tryParse(_targetPayout.text) ?? 30.0,
               ));
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                   content: Text('Configuracoes salvas!')));

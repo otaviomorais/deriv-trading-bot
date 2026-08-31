@@ -175,14 +175,32 @@ class TradingBot {
       '| Stake: ${currentStake.toStringAsFixed(2)} $currency',
     );
     try {
-      final contractId = await api.buyContract(
-        contractType: contractType,
-        stake: currentStake,
-        duration: config.durationTicks,
-        symbol: config.symbol,
-        currency: currency,
-      );
-      onLog('Contrato #$contractId aberto.');
+      final int contractId;
+      if (config.contractMode == BotConfig.modeHigherLower) {
+        final hlType = contractType == 'CALL' ? 'HIGHER' : 'LOWER';
+        final res = await api.buyHigherLower(
+          contractType: hlType,
+          stake: currentStake,
+          duration: config.durationTicks,
+          symbol: config.symbol,
+          currency: currency,
+          targetReturnPct: config.targetPayoutPct,
+        );
+        contractId = res.contractId;
+        onLog(
+          'Contrato #$contractId aberto ($hlType, barreira ${res.proposal.barrier}, '
+          'retorno ~${res.proposal.returnPct.toStringAsFixed(1)}%).',
+        );
+      } else {
+        contractId = await api.buyContract(
+          contractType: contractType,
+          stake: currentStake,
+          duration: config.durationTicks,
+          symbol: config.symbol,
+          currency: currency,
+        );
+        onLog('Contrato #$contractId aberto.');
+      }
       _adoptContract(contractId);
     } catch (e) {
       onLog('ERRO ao comprar contrato: $e');

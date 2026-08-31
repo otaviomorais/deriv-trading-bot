@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../bot/trading_bot.dart';
+import '../models/bot_config.dart';
 import '../state/bot_state.dart';
 import 'settings_screen.dart';
 
@@ -96,7 +97,10 @@ class HomeScreen extends StatelessWidget {
               state.status == BotStatus.reconnecting
                   ? 'Status: RECONECTANDO (${state.config.symbol})'
                   : state.isRunning
-                      ? 'Status: OPERANDO (${state.config.symbol})'
+                      ? 'Status: OPERANDO (${state.config.symbol} · '
+                          '${state.config.contractMode == BotConfig.modeHigherLower
+                              ? 'H/L ${state.config.targetPayoutPct.toStringAsFixed(0)}%'
+                              : 'R/F'})'
                       : 'Status: PARADO',
               style: TextStyle(
                 color: state.isRunning ? Colors.greenAccent : Colors.grey,
