@@ -10,6 +10,16 @@ import '../models/bot_config.dart';
 double _asDouble(dynamic v) =>
     v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
 
+/// Formata barreira com ate 2 casas (precisao dos indices de volatilidade),
+/// sem zeros desnecessarios: 12.50 -> 12.5, 12.00 -> 12.
+String _fmtBarrier(double v) {
+  var s = v.toStringAsFixed(2);
+  if (s.contains('.')) {
+    s = s.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+  }
+  return s.isEmpty ? '0' : s;
+}
+
 class DerivApiException implements Exception {
   final String message;
   final String? code;
@@ -56,6 +66,14 @@ class BarrierContractResult {
     required this.contractId,
     required this.proposal,
   });
+}
+
+/// Como o campo de barreira deve ser enviado para a API.
+class _BarrierStyle {
+  final String field; // 'barrier' ou 'barrier_offset'
+  final bool absolute; // true = valor absoluto (usa spot)
+  final bool asNumber; // true = numero JSON; false = string
+  const _BarrierStyle(this.field, this.absolute, this.asNumber);
 }
 
 class _Subscription {
@@ -470,9 +488,13 @@ class DerivApi {
 
   /// Propoe um higher/lower usando o proprio tipo do sinal (CALL/PUT) com
   /// barreira de margem: CALL -> barreira NEGATIVA (abaixo do spot);
-  /// PUT -> barreira POSITIVA (acima do spot). Tenta barreira relativa
-  /// (+/-) e, se a API recusar, barreira absoluta a partir do spot.
-  Future<Map<String, dynamic>> _proposeWithBarrier({
+  /// PUT -> barreira POSITIVA (acima do spot).
+  ///
+  /// Tenta varias representacoes de barreira (relativa/absoluta,
+  /// string/numero, barrier/barrier_offset) e devolve a que a API aceitou
+  /// para reutilizar nas proximas buscas.
+  Future<({Map<String, dynamic> proposal, _BarrierStyle style})>
+      _proposeWithBarrier({
     required String contractType,
     required double stake,
     required int duration,
@@ -480,10 +502,35 @@ class DerivApi {
     required String currency,
     required double offset,
     double? spot,
+    _BarrierStyle? preferred,
   }) async {
     final sign = contractType == 'CALL' ? -1.0 : 1.0;
+    final rel = sign * offset;
+    final abs = (spot != null && spot > 0) ? spot + rel : null;
 
-    Map<String, dynamic> call(String barrier) => {
+    Object? valueFor(_BarrierStyle s) => s.asNumber
+        ? (s.absolute ? abs! : rel)
+        : _fmtBarrier(s.absolute ? abs! : rel);
+
+    final styles = <_BarrierStyle>[
+      const _BarrierStyle('barrier', false, false), // relativa, string
+      if (abs != null) const _BarrierStyle('barrier', true, false), // absoluta, string
+      const _BarrierStyle('barrier', false, true), // relativa, numero
+      if (abs != null) const _BarrierStyle('barrier', true, true), // absoluta, numero
+      const _BarrierStyle('barrier_offset', false, true), // barrier_offset numero
+    ];
+    if (preferred != null) {
+      styles.removeWhere((s) =>
+          s.field == preferred.field &&
+          s.absolute == preferred.absolute &&
+          s.asNumber == preferred.asNumber);
+      styles.insert(0, preferred);
+    }
+
+    Object? lastErr;
+    for (final s in styles) {
+      try {
+        final res = await request({
           'proposal': 1,
           'amount': stake,
           'basis': 'stake',
@@ -492,20 +539,9 @@ class DerivApi {
           'duration': duration,
           'duration_unit': 't',
           'underlying_symbol': symbol,
-          'barrier': barrier,
-        };
-
-    Object? lastErr;
-    try {
-      return _ensureProposal(
-          await request(call((sign * offset).toStringAsFixed(4))));
-    } catch (e) {
-      lastErr = e;
-    }
-    if (spot != null && spot > 0) {
-      try {
-        return _ensureProposal(
-            await request(call((spot + sign * offset).toStringAsFixed(4))));
+          s.field: valueFor(s),
+        });
+        return (proposal: _ensureProposal(res), style: s);
       } catch (e) {
         lastErr = e;
       }
@@ -544,10 +580,11 @@ class DerivApi {
     }
 
     String? lastErr;
+    _BarrierStyle? style;
     Future<BarrierProposal?> probe(double offset) async {
       final relBarrier = (contractType == 'CALL' ? -1.0 : 1.0) * offset;
       try {
-        final p = await _proposeWithBarrier(
+        final r = await _proposeWithBarrier(
           contractType: contractType,
           stake: stake,
           duration: duration,
@@ -555,10 +592,16 @@ class DerivApi {
           currency: currency,
           offset: offset,
           spot: spot,
+          preferred: style,
         );
+        style = r.style;
+        final p = r.proposal;
+        final used = r.style.absolute ? (spot ?? 0) + relBarrier : relBarrier;
+        final display =
+            r.style.asNumber ? used.toStringAsFixed(2) : _fmtBarrier(used);
         return BarrierProposal(
           proposalId: p['id'] as String,
-          barrier: relBarrier.toStringAsFixed(4),
+          barrier: display,
           returnPct: returnPctOf(p),
           payout: _asDouble(p['payout']),
           spot: _asDouble(p['spot']),
@@ -569,9 +612,9 @@ class DerivApi {
       }
     }
 
-    // Ancoragem ~ no spot (retorno maximo possivel para o alvo).
+    // Ancoragem perto do spot (retorno maximo possivel para o alvo).
     BarrierProposal? anchor;
-    for (final off in const [0.0, 0.01, 0.1, 1.0, 5.0]) {
+    for (final off in const [0.01, 0.1, 1.0, 5.0, 10.0]) {
       anchor = await probe(off);
       if (anchor != null) break;
     }
