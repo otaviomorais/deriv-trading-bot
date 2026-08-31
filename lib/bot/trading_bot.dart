@@ -4,6 +4,14 @@ import '../models/bot_config.dart';
 import '../services/deriv_api.dart';
 import '../strategy/ml_strategy.dart';
 
+/// Plataforma nova da Deriv devolve numericos como string|number
+/// (breaking change em developers.deriv.com/comparison/proposal-open-contract).
+double _asDouble(dynamic v) =>
+    v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+
+bool _isSold(Map<String, dynamic> c) =>
+    c['is_sold'] == 1 || c['is_sold'] == true;
+
 enum BotStatus { idle, connecting, running, reconnecting, stopped, error }
 
 class TradingBot {
@@ -103,7 +111,7 @@ class TradingBot {
       _recoverySub?.cancel();
       _recoverySub = api.subscribeOpenContracts().listen((msg) {
         final c = msg['proposal_open_contract'] as Map<String, dynamic>?;
-        if (c == null || c['is_sold'] == 1) return;
+        if (c == null || _isSold(c)) return;
         final id = c['contract_id'] as int?;
         if (id == null) return;
         onLog('Contrato aberto recuperado #$id. Acompanhando ate o fim.');
@@ -130,7 +138,7 @@ class TradingBot {
     if (_stopping || _disposed) return;
     final tick = msg['tick'] as Map<String, dynamic>?;
     if (tick == null) return;
-    final quote = (tick['quote'] as num).toDouble();
+    final quote = _asDouble(tick['quote']);
 
     if (_closes.isNotEmpty) {
       final prevFeatures = strategy.buildFeatures(_closes);
@@ -192,8 +200,8 @@ class TradingBot {
       (msg) {
         final c = msg['proposal_open_contract'] as Map<String, dynamic>?;
         if (c == null) return;
-        if (c['is_sold'] == 1) {
-          final profit = (c['profit'] as num?)?.toDouble() ?? 0;
+        if (_isSold(c)) {
+          final profit = _asDouble(c['profit']);
           _closeTrade(profit);
         }
       },
@@ -217,8 +225,7 @@ class TradingBot {
       onLog('AVISO: contrato #$id sem conclusao em ${timeout.inSeconds}s.');
       try {
         final open = await api.fetchOpenContract(id);
-        final stillOpen =
-            open != null && (open['is_sold'] == 0 || open['is_sold'] == null);
+        final stillOpen = open != null && !_isSold(open);
         if (stillOpen) {
           // Ainda aberto a mercado: tenta vender para nao ficar pendurado.
           try {
@@ -232,9 +239,9 @@ class TradingBot {
           return;
         }
         // Ja nao esta aberto: registra o desfecho se o servidor reportou.
-        final sold = open != null && open['is_sold'] == 1;
-        final profit = (open?['profit'] as num?)?.toDouble() ?? 0;
-        if (sold && profit != 0) {
+        final sold = open != null && _isSold(open);
+        final profit = _asDouble(open?['profit']);
+        if (sold) {
           _closeTrade(profit);
         } else {
           onLog('Contrato #$id encerrou automaticamente.');

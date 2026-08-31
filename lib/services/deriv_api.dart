@@ -6,6 +6,10 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/bot_config.dart';
 
+/// Plataforma nova da Deriv devolve numericos como string|number.
+double _asDouble(dynamic v) =>
+    v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+
 class DerivApiException implements Exception {
   final String message;
   final String? code;
@@ -56,6 +60,7 @@ class DerivApi {
   bool get isConnected => _channel != null && !_isClosing;
 
   bool _isClosing = false;
+  Timer? _heartbeat;
 
   Future<void> connect({
     required String token,
@@ -209,6 +214,19 @@ class DerivApi {
       onDone: () => _handleDisconnect('Conexao fechada pela Deriv'),
       cancelOnError: false,
     );
+    _startHeartbeat();
+  }
+
+  /// Mantem o socket vivo: a Deriv fecha conexoes ociosas. Ping sem req_id;
+  /// o pong volta sem req_id e e ignorado por _handleMessage.
+  void _startHeartbeat() {
+    _heartbeat?.cancel();
+    _heartbeat = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!isConnected) return;
+      try {
+        _channel?.sink.add(jsonEncode({'ping': 1}));
+      } catch (_) {}
+    });
   }
 
   void _handleDisconnect(String reason) {
@@ -332,7 +350,7 @@ class DerivApi {
           b['is_virtual'] == true ||
           accountId.startsWith('DOT'),
       currency: (b['currency'] ?? 'USD').toString(),
-      balance: (b['balance'] as num?)?.toDouble() ?? 0,
+      balance: _asDouble(b['balance']),
     );
   }
 
@@ -348,8 +366,8 @@ class DerivApi {
       'style': 'ticks',
     });
     final history = res['history'] as Map<String, dynamic>;
-    final prices = (history['prices'] as List).cast<num>();
-    return prices.map((p) => p.toDouble()).toList();
+    final prices = history['prices'] as List;
+    return prices.map((p) => _asDouble(p)).toList();
   }
 
   Stream<Map<String, dynamic>> subscribeTicks(String symbol) {
@@ -439,6 +457,8 @@ class DerivApi {
 
   void dispose() {
     _isClosing = true;
+    _heartbeat?.cancel();
+    _heartbeat = null;
     for (final sub in _subscriptions.values) {
       unawaited(sub.controller.close());
     }
