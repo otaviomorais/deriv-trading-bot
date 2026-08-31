@@ -189,8 +189,8 @@ class TradingBot {
         );
         contractId = res.contractId;
         onLog(
-          'Contrato #$contractId aberto ($hlType, barreira ${res.proposal.barrier}, '
-          'retorno ~${res.proposal.returnPct.toStringAsFixed(1)}%).',
+          'Contrato #$contractId aberto ($hlType, barreira ${res.proposal.barrier} '
+          '[${res.proposal.source}], retorno ~${res.proposal.returnPct.toStringAsFixed(1)}%).',
         );
       } else {
         contractId = await api.buyContract(

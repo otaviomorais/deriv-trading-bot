@@ -44,8 +44,10 @@ class AccountInfo {
 
 class BarrierProposal {
   final String proposalId;
-  /// Barreira relativa ao spot no formato da API (ex.: '-12.5000').
+  /// Barreira relativa ao spot no formato da API (ex.: '-12.5').
   final String barrier;
+  /// Representacao de barreira que a API aceitou (ex.: 'barrier relativa string').
+  final String source;
   /// Retorno esperado em % se vencer: (payout - stake) / stake * 100.
   final double returnPct;
   final double payout;
@@ -53,6 +55,7 @@ class BarrierProposal {
   const BarrierProposal({
     required this.proposalId,
     required this.barrier,
+    required this.source,
     required this.returnPct,
     required this.payout,
     required this.spot,
@@ -554,8 +557,9 @@ class DerivApi {
   /// HIGHER usa barreira NEGATIVA (abaixo do spot = margem para sinal CALL);
   /// LOWER usa barreira POSITIVA (acima do spot = margem para sinal PUT).
   ///
-  /// Busca binaria: o retorno cai monotonicamente quanto maior a margem
-  /// (barreira mais "facil"). O erro real da API e preservado no log.
+  /// Varredura incremental de margem: comeca no menor offset valido e aumenta
+  /// ate a API rejeitar a barreira (limite do contrato) ou ate o retorno
+  /// atingir o alvo. Usa o offset mais proximo do alvo entre os validos.
   Future<BarrierProposal> findBarrierForReturn({
     required String contractType,
     required double stake,
@@ -569,6 +573,10 @@ class DerivApi {
       final payout = _asDouble(p['payout']);
       return stake > 0 ? (payout - stake) / stake * 100 : 0.0;
     }
+
+    String describe(_BarrierStyle s) =>
+        '${s.field} ${s.absolute ? 'absoluta' : 'relativa'} '
+        '${s.asNumber ? 'numero' : 'string'}';
 
     double? spot =
         (currentSpot != null && currentSpot > 0) ? currentSpot : null;
@@ -601,6 +609,7 @@ class DerivApi {
         return BarrierProposal(
           proposalId: p['id'] as String,
           barrier: display,
+          source: describe(r.style),
           returnPct: returnPctOf(p),
           payout: _asDouble(p['payout']),
           spot: _asDouble(p['spot']),
@@ -611,11 +620,15 @@ class DerivApi {
       }
     }
 
-    // Ancoragem perto do spot (retorno maximo possivel para o alvo).
+    // Ancoragem: menor offset valido perto do spot (retorno maximo possivel).
     BarrierProposal? anchor;
-    for (final off in const [0.01, 0.1, 1.0, 5.0, 10.0]) {
+    double anchorOffset = 0.01;
+    for (final off in const [0.01, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0]) {
       anchor = await probe(off);
-      if (anchor != null) break;
+      if (anchor != null) {
+        anchorOffset = off;
+        break;
+      }
     }
     if (anchor == null) {
       throw DerivApiException(
@@ -624,28 +637,25 @@ class DerivApi {
       );
     }
     if (anchor.returnPct <= targetReturnPct) {
-      // Mesmo na barreira do spot o retorno ja e menor que o alvo.
+      // Mesmo na menor margem o retorno ja e menor que o alvo.
       return anchor;
     }
 
-    double lo = 0;
+    // Varredura de margem crescente ate a API rejeitar (limite do contrato)
+    // ou ate o retorno atingir/ultrapassar o alvo.
     final baseSpot = anchor.spot > 0 ? anchor.spot : (spot ?? 0);
-    double hi = baseSpot * 0.02; // margem maxima: 2% do spot
-    if (hi <= 0) hi = 1.0;
+    final maxOffset = baseSpot * 0.02; // 2% do spot
+    final step = (baseSpot * 0.0005).clamp(0.01, 50.0).toDouble();
+
     BarrierProposal best = anchor;
-    for (var i = 0; i < 14; i++) {
-      final mid = (lo + hi) / 2;
-      final p = await probe(mid);
-      if (p == null) break;
+    for (double off = anchorOffset + step; off <= maxOffset; off += step) {
+      final p = await probe(off);
+      if (p == null) break; // barreira fora do range aceito -> melhor ate aqui
       if ((p.returnPct - targetReturnPct).abs() <
           (best.returnPct - targetReturnPct).abs()) {
         best = p;
       }
-      if (p.returnPct > targetReturnPct) {
-        lo = mid; // precisa de mais margem para reduzir o retorno
-      } else {
-        hi = mid; // passou do alvo
-      }
+      if (p.returnPct <= targetReturnPct) break; // atingiu o alvo
     }
     return best;
   }
