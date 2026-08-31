@@ -177,8 +177,9 @@ class TradingBot {
     try {
       final int contractId;
       if (config.contractMode == BotConfig.modeHigherLower) {
+        final hlType = contractType == 'CALL' ? 'HIGHER' : 'LOWER';
         final res = await api.buyHigherLower(
-          contractType: contractType,
+          contractType: hlType,
           stake: currentStake,
           duration: config.durationTicks,
           symbol: config.symbol,
@@ -188,8 +189,8 @@ class TradingBot {
         );
         contractId = res.contractId;
         onLog(
-          'Contrato #$contractId aberto ($contractType + barreira '
-          '${res.proposal.barrier}, retorno ~${res.proposal.returnPct.toStringAsFixed(1)}%).',
+          'Contrato #$contractId aberto ($hlType, barreira ${res.proposal.barrier}, '
+          'retorno ~${res.proposal.returnPct.toStringAsFixed(1)}%).',
         );
       } else {
         contractId = await api.buyContract(

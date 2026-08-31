@@ -486,9 +486,9 @@ class DerivApi {
     return p;
   }
 
-  /// Propoe um higher/lower usando o proprio tipo do sinal (CALL/PUT) com
-  /// barreira de margem: CALL -> barreira NEGATIVA (abaixo do spot);
-  /// PUT -> barreira POSITIVA (acima do spot).
+  /// Propoe um higher/lower com barreira de margem:
+  /// HIGHER -> barreira NEGATIVA (abaixo do spot);
+  /// LOWER -> barreira POSITIVA (acima do spot).
   ///
   /// Tenta varias representacoes de barreira (relativa/absoluta,
   /// string/numero, barrier/barrier_offset) e devolve a que a API aceitou
@@ -504,7 +504,7 @@ class DerivApi {
     double? spot,
     _BarrierStyle? preferred,
   }) async {
-    final sign = contractType == 'CALL' ? -1.0 : 1.0;
+    final sign = contractType == 'HIGHER' ? -1.0 : 1.0;
     final rel = sign * offset;
     final abs = (spot != null && spot > 0) ? spot + rel : null;
 
@@ -527,7 +527,7 @@ class DerivApi {
       styles.insert(0, preferred);
     }
 
-    Object? lastErr;
+    final errs = <String>[];
     for (final s in styles) {
       try {
         final res = await request({
@@ -543,17 +543,16 @@ class DerivApi {
         });
         return (proposal: _ensureProposal(res), style: s);
       } catch (e) {
-        lastErr = e;
+        errs.add(e is DerivApiException ? e.toString() : '$e');
       }
     }
-    if (lastErr is DerivApiException) throw lastErr;
-    throw const DerivApiException('Proposal higher/lower recusado.');
+    throw DerivApiException('Proposal higher/lower recusado (${errs.join(' | ')})');
   }
 
   /// Encontra a barreira que entrega ~targetReturnPct% de retorno.
   ///
-  /// CALL usa barreira NEGATIVA (abaixo do spot = margem para sinal CALL);
-  /// PUT usa barreira POSITIVA (acima do spot = margem para sinal PUT).
+  /// HIGHER usa barreira NEGATIVA (abaixo do spot = margem para sinal CALL);
+  /// LOWER usa barreira POSITIVA (acima do spot = margem para sinal PUT).
   ///
   /// Busca binaria: o retorno cai monotonicamente quanto maior a margem
   /// (barreira mais "facil"). O erro real da API e preservado no log.
@@ -582,7 +581,7 @@ class DerivApi {
     String? lastErr;
     _BarrierStyle? style;
     Future<BarrierProposal?> probe(double offset) async {
-      final relBarrier = (contractType == 'CALL' ? -1.0 : 1.0) * offset;
+      final relBarrier = (contractType == 'HIGHER' ? -1.0 : 1.0) * offset;
       try {
         final r = await _proposeWithBarrier(
           contractType: contractType,
