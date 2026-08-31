@@ -32,7 +32,7 @@ class BotTaskHandler extends TaskHandler {
       final config = BotConfig.fromJson(
         (data['config'] as Map).cast<String, dynamic>(),
       );
-      _startBot(config);
+      _startBot(config, data);
     } else if (cmd == 'stop') {
       _stopBot('Parado pelo usuario');
       _send({'t': 'status', 's': 'stopped'});
@@ -65,15 +65,28 @@ class BotTaskHandler extends TaskHandler {
     FlutterForegroundTask.launchApp();
   }
 
-  void _startBot(BotConfig config) {
+  void _startBot(BotConfig config, Map<String, dynamic> data) {
     if (_bot != null) {
       _send({'t': 'log', 'm': 'AVISO: bot ja esta em execucao.'});
       return;
     }
+
+    // Estado persistido carregado pelo isolate principal (onde o
+    // SharedPreferences funciona) e repassado junto com o start.
+    final modelJson =
+        data['model'] is String && (data['model'] as String).isNotEmpty
+            ? data['model'] as String
+            : null;
+    final dayKey = data['dayKey'] as String?;
+    final dayPnl = (data['dayPnl'] as num?)?.toDouble() ?? 0;
+
     _bot = TradingBot(
       config: config,
+      modelJson: modelJson,
+      dayKey: dayKey,
+      dailyPnl: dayPnl,
       onLog: (m) {
-        // Logcat (capturável via `logcat -s flutter`) + arquivo no Download.
+        // Logcat (capturavel via `logcat -s flutter`) + arquivo no Download.
         try {
           File('/storage/emulated/0/Download/deriv_bot.log').writeAsStringSync(
               '${DateTime.now().toIso8601String().substring(11, 19)} $m\n',
@@ -94,12 +107,19 @@ class BotTaskHandler extends TaskHandler {
         't': 'trade',
         'profit': r.profit,
         'pnl': r.pnl,
+        'dPnl': r.dailyPnl,
         'wins': r.wins,
         'losses': r.losses,
       }),
       onStopped: (reason) {
         _updateNotification(reason);
         _send({'t': 'status', 's': 'stopped'});
+      },
+      onModelChanged: (json) async {
+        _send({'t': 'model', 'j': json});
+      },
+      onDailyPnlChanged: (key, pnl) async {
+        _send({'t': 'day', 'k': key, 'p': pnl});
       },
     );
     _bot!.start().then((_) {

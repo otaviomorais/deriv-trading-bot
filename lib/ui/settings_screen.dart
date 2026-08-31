@@ -18,6 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _maxLoss;
   late final TextEditingController _takeProfit;
   late final TextEditingController _maxTrades;
+  late final TextEditingController _cooldown;
 
   late String _symbol;
   late String _accountType;
@@ -25,6 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late int _duration;
   late bool _martingale;
   late int _martingaleLevels;
+  late bool _paper;
 
   static const _symbols = {
     'R_10': 'Volatility 10',
@@ -45,12 +47,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _maxLoss = TextEditingController(text: cfg.maxDailyLoss.toString());
     _takeProfit = TextEditingController(text: cfg.takeProfit.toString());
     _maxTrades = TextEditingController(text: cfg.maxTrades.toString());
+    _cooldown = TextEditingController(text: cfg.cooldownTicks.toString());
     _symbol = cfg.symbol;
     _accountType = cfg.accountType;
     _threshold = cfg.entryThreshold;
     _duration = cfg.durationTicks;
     _martingale = cfg.useMartingale;
     _martingaleLevels = cfg.martingaleMaxLevels;
+    _paper = cfg.paperTrading;
   }
 
   @override
@@ -61,7 +65,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _maxLoss.dispose();
     _takeProfit.dispose();
     _maxTrades.dispose();
+    _cooldown.dispose();
     super.dispose();
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+    );
+  }
+
+  void _save() {
+    final state = context.read<BotState>();
+    final stake = double.tryParse(_stake.text.trim().replaceAll(',', '.'));
+    final maxLoss = double.tryParse(_maxLoss.text.trim().replaceAll(',', '.'));
+    final takeProfit =
+        double.tryParse(_takeProfit.text.trim().replaceAll(',', '.'));
+    final maxTrades = int.tryParse(_maxTrades.text.trim());
+    final cooldown = int.tryParse(_cooldown.text.trim());
+
+    if (stake == null || stake <= 0) {
+      _showError('Stake deve ser um numero maior que zero.');
+      return;
+    }
+    if (stake > 5000) {
+      _showError('Stake acima de 5000 USD parece invalido.');
+      return;
+    }
+    if (maxLoss == null || maxLoss <= 0) {
+      _showError('Stop Loss diario deve ser maior que zero.');
+      return;
+    }
+    if (takeProfit == null || takeProfit <= 0) {
+      _showError('Take Profit deve ser maior que zero.');
+      return;
+    }
+    if (maxTrades == null || maxTrades < 1) {
+      _showError('Maximo de operacoes deve ser >= 1.');
+      return;
+    }
+    if (cooldown == null || cooldown < 0) {
+      _showError('Cooldown deve ser >= 0 ticks.');
+      return;
+    }
+
+    state.saveConfig(BotConfig(
+      token: _token.text.trim(),
+      appId: _appId.text.trim(),
+      symbol: _symbol,
+      accountType: _accountType,
+      baseStake: stake,
+      durationTicks: _duration,
+      entryThreshold: _threshold,
+      maxDailyLoss: maxLoss,
+      takeProfit: takeProfit,
+      useMartingale: _martingale,
+      martingaleFactor: 2.0,
+      martingaleMaxLevels: _martingaleLevels,
+      maxTrades: maxTrades,
+      paperTrading: _paper,
+      cooldownTicks: cooldown,
+    ));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Configuracoes salvas!')));
+      Navigator.pop(context);
+    }
   }
 
   @override
@@ -85,7 +154,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 16),
           TextField(
             controller: _appId,
-            keyboardType: TextInputType.number,
             decoration: const InputDecoration(
               labelText: 'App ID (nova plataforma)',
               border: OutlineInputBorder(),
@@ -138,6 +206,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           const SizedBox(height: 16),
+          SwitchListTile(
+            title: const Text('Modo simulacao (paper trading)'),
+            subtitle: const Text(
+                'Simula contratos e resultados SEM movimentar dinheiro. '
+                'Use para testar a estrategia antes da conta REAL.'),
+            value: _paper,
+            onChanged: (v) => setState(() => _paper = v),
+          ),
+          const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             initialValue: _symbol,
             decoration: const InputDecoration(
@@ -258,31 +335,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             decoration: const InputDecoration(
                 labelText: 'Maximo de operacoes', border: OutlineInputBorder()),
           ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _cooldown,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+                labelText: 'Cooldown entre operacoes (ticks)',
+                border: OutlineInputBorder(),
+                helperText: 'Espera N ticks apos fechar uma operacao antes de abrir outra.'),
+          ),
           const SizedBox(height: 24),
           FilledButton.icon(
             icon: const Icon(Icons.save),
             label: const Text('Salvar configuracoes'),
-            onPressed: () {
-              final state = context.read<BotState>();
-              state.saveConfig(BotConfig(
-                token: _token.text.trim(),
-                appId: _appId.text.trim(),
-                symbol: _symbol,
-                accountType: _accountType,
-                baseStake: double.tryParse(_stake.text) ?? 1.0,
-                durationTicks: _duration,
-                entryThreshold: _threshold,
-                maxDailyLoss: double.tryParse(_maxLoss.text) ?? 25.0,
-                takeProfit: double.tryParse(_takeProfit.text) ?? 50.0,
-                useMartingale: _martingale,
-                martingaleFactor: 2.0,
-                martingaleMaxLevels: _martingaleLevels,
-                maxTrades: int.tryParse(_maxTrades.text) ?? 100,
-              ));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Configuracoes salvas!')));
-              Navigator.pop(context);
-            },
+            onPressed: _save,
           ),
         ],
       ),

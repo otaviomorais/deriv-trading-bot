@@ -13,6 +13,9 @@ import '../models/bot_config.dart';
 class BotState extends ChangeNotifier {
   static const _prefsKey = 'bot_config_v1';
   static const _secureTokenKey = 'bot_deriv_token';
+  static const _modelKey = 'bot_model_v1';
+  static const _dayKeyKey = 'bot_day_key';
+  static const _dayPnlKey = 'bot_day_pnl';
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
@@ -23,6 +26,7 @@ class BotState extends ChangeNotifier {
   bool accountIsVirtual = true;
   double balance = 0;
   double pnl = 0;
+  double dailyPnl = 0;
   int wins = 0;
   int losses = 0;
   int totalTrades = 0;
@@ -197,6 +201,7 @@ class BotState extends ChangeNotifier {
 
     totalTrades = 0;
     pnl = 0;
+    dailyPnl = 0;
     wins = 0;
     losses = 0;
     lastProbability = 0.5;
@@ -220,9 +225,21 @@ class BotState extends ChangeNotifier {
     switch (result) {
       case ServiceRequestSuccess():
         log('Servico em segundo plano iniciado.');
+        String? modelJson;
+        String? dayKey;
+        var dayPnl = 0.0;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          modelJson = prefs.getString(_modelKey);
+          dayKey = prefs.getString(_dayKeyKey);
+          dayPnl = prefs.getDouble(_dayPnlKey) ?? 0;
+        } catch (_) {}
         FlutterForegroundTask.sendDataToTask({
           'cmd': 'start',
           'config': config.toJson(),
+          if (modelJson != null && modelJson.isNotEmpty) 'model': modelJson,
+          if (dayKey != null) 'dayKey': dayKey,
+          'dayPnl': dayPnl,
         });
       case ServiceRequestFailure(error: final e):
         status = BotStatus.error;
@@ -246,7 +263,7 @@ class BotState extends ChangeNotifier {
   // Mensagens vindas do isolate do servico
   // ------------------------------------------------------------------
 
-  void _onTaskData(Object data) {
+  Future<void> _onTaskData(Object data) async {
     final msg = decodeTaskData(data);
     switch (msg['t']) {
       case 'log':
@@ -266,9 +283,30 @@ class BotState extends ChangeNotifier {
         break;
       case 'trade':
         pnl = (msg['pnl'] as num?)?.toDouble() ?? pnl;
+        dailyPnl = (msg['dPnl'] as num?)?.toDouble() ?? dailyPnl;
         wins = (msg['wins'] as num?)?.toInt() ?? wins;
         losses = (msg['losses'] as num?)?.toInt() ?? losses;
         totalTrades++;
+        break;
+      case 'model':
+        final j = msg['j'];
+        if (j is String && j.isNotEmpty) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_modelKey, j);
+          } catch (_) {}
+        }
+        break;
+      case 'day':
+        final k = msg['k'];
+        final p = (msg['p'] as num?)?.toDouble();
+        if (k is String && p != null) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_dayKeyKey, k);
+            await prefs.setDouble(_dayPnlKey, p);
+          } catch (_) {}
+        }
         break;
       case 'status':
         final s = msg['s'];
