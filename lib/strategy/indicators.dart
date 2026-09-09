@@ -53,4 +53,54 @@ class Indicators {
     if (sd == 0) return 0;
     return (window.last - mean) / sd;
   }
+
+  /// MACD (linha, sinal, histograma) usando EMA 12/26/9, em O(n).
+  static ({double macdLine, double signalLine, double histogram}) macd(
+    List<double> closes, {
+    int fast = 12,
+    int slow = 26,
+    int signal = 9,
+  }) {
+    if (closes.length < slow + signal) {
+      return (macdLine: 0, signalLine: 0, histogram: 0);
+    }
+    final fastK = 2 / (fast + 1);
+    final slowK = 2 / (slow + 1);
+    final signalK = 2 / (signal + 1);
+
+    var fastEma = closes.first;
+    var slowEma = closes.first;
+    var signalEma = 0.0;
+    var macdLine = 0.0;
+
+    for (var i = 1; i < closes.length; i++) {
+      fastEma = closes[i] * fastK + fastEma * (1 - fastK);
+      slowEma = closes[i] * slowK + slowEma * (1 - slowK);
+      if (i >= slow - 1) {
+        macdLine = fastEma - slowEma;
+        if (i == slow - 1) {
+          signalEma = macdLine;
+        } else {
+          signalEma = macdLine * signalK + signalEma * (1 - signalK);
+        }
+      }
+    }
+
+    return (
+      macdLine: macdLine,
+      signalLine: signalEma,
+      histogram: macdLine - signalEma,
+    );
+  }
+
+  /// ATR (Average True Range) sobre a serie de fechamentos.
+  /// Aproximacao sem high/low: usa |close[i] - close[i-1]| como "range".
+  static double atr(List<double> closes, int period) {
+    if (closes.length <= period) return 0;
+    var sum = 0.0;
+    for (var i = closes.length - period; i < closes.length; i++) {
+      sum += (closes[i] - closes[i - 1]).abs();
+    }
+    return sum / period;
+  }
 }

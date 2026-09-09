@@ -10,12 +10,16 @@ Bot de trading para a corretora **Deriv** usando análise técnica + machine lea
 
 ## Funcionalidades
 - Autenticação na nova plataforma: REST (Bearer PAT) → OTP → WebSocket autenticado
-- Estratégia: retornos defasados + RSI (Wilder) + Bollinger + z-score de volatilidade
-  alimentando um modelo ML que aprende continuamente a cada tick
+- Estratégia: retornos defasados + RSI (Wilder) + Bollinger + z-score de
+  volatilidade + momentum + MACD + ATR alimentando um modelo ML
+  (regressão logística online com regularização L2) que aprende continuamente
+  a cada tick
 - Contratos Rise/Fall (CALL/PUT) em índices sintéticos (Volatility 10–100)
 - Gestão de risco: Stop Loss diário, Take Profit, limite de operações,
   pausa após 5 losses seguidos, martingale opcional **com limite de níveis** (padrão: 3)
 - Reconexão automática com backoff (preserva modelo e estatísticas)
+- Modelo ML persistido em disco: sobrevive a reinícios do serviço/APP
+  (`deriv_bot_model.json` no Download)
 - Recuperação de contratos abertos ao reiniciar; venda a mercado no stop
 - Token armazenado com segurança (Android Keystore via `flutter_secure_storage`)
 - UI dark com saldo (DEMO/REAL), PnL, sinal ao vivo e log de operações

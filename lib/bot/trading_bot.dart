@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import '../models/bot_config.dart';
 import '../services/deriv_api.dart';
 import '../strategy/ml_strategy.dart';
+import '../utils/paths.dart';
 
 /// Plataforma nova da Deriv devolve numericos como string|number
 /// (breaking change em developers.deriv.com/comparison/proposal-open-contract).
@@ -85,6 +88,10 @@ class TradingBot {
       onLog('Carregando historico de ${config.symbol}...');
       _closes.clear();
       _closes.addAll(await api.fetchTicksHistory(config.symbol, count: 1000));
+      if (!_wasWarm && _loadModelState()) {
+        _wasWarm = true;
+        onLog('Modelo restaurado do disco (${strategy.trainedSamples} amostras).');
+      }
       if (!_wasWarm) {
         onLog('Treinando modelo com ${_closes.length} ticks...');
         strategy.warmUp(_closes);
@@ -105,6 +112,30 @@ class TradingBot {
   }
 
   bool _wasWarm = false;
+
+  static File get _modelFile => AppPaths.modelFile;
+
+  /// Carrega o estado do modelo do disco, se existir. Retorna true se restaurou.
+  bool _loadModelState() {
+    try {
+      final f = _modelFile;
+      if (!f.existsSync()) return false;
+      final raw = f.readAsStringSync();
+      if (raw.trim().isEmpty) return false;
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      strategy.fromJson(json);
+      return strategy.trainedSamples > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _saveModelState() {
+    try {
+      _modelFile.writeAsStringSync(
+          jsonEncode(strategy.toJson()), mode: FileMode.write, flush: true);
+    } catch (_) {}
+  }
 
   Future<void> _recoverOpenContracts() async {
     try {
@@ -168,6 +199,9 @@ class TradingBot {
   }
 
   Future<void> _openTrade(String contractType, double prob) async {
+    // Guarda sincrono contra reentrada: _inTrade e setado ANTES de qualquer
+    // await, evitando que ticks simultaneos abram multiplos contratos.
+    if (_inTrade || _disposed || _stopping) return;
     _inTrade = true;
     totalTrades++;
     onLog(
@@ -188,9 +222,15 @@ class TradingBot {
           currentSpot: _closes.isNotEmpty ? _closes.last : null,
         );
         contractId = res.contractId;
+        final att = res.proposal.returnPct;
+        final msg = att >= config.targetPayoutPct - 0.5
+            ? 'lucro ~${att.toStringAsFixed(1)}%'
+            : 'lucro MAX ~${att.toStringAsFixed(1)}% (alvo de '
+                '${config.targetPayoutPct.toStringAsFixed(0)}% indisponivel '
+                'para este contrato)';
         onLog(
           'Contrato #$contractId aberto ($hlType, barreira ${res.proposal.barrier} '
-          '[${res.proposal.source}], retorno ~${res.proposal.returnPct.toStringAsFixed(1)}%).',
+          '[${res.proposal.source}], $msg).',
         );
       } else {
         contractId = await api.buyContract(
@@ -276,13 +316,13 @@ class TradingBot {
   void _closeTrade(double profit) {
     _releaseContractTracking();
     pnl += profit;
-    if (profit >= 0) {
+    if (profit > 0) {
       wins++;
       _consecutiveLosses = 0;
       _martingaleLevel = 0;
       currentStake = config.baseStake;
       onLog('WIN +$profit | PnL: ${pnl.toStringAsFixed(2)}');
-    } else {
+    } else if (profit < 0) {
       losses++;
       _consecutiveLosses++;
       if (config.useMartingale && _martingaleLevel < config.martingaleMaxLevels) {
@@ -297,9 +337,16 @@ class TradingBot {
         currentStake = config.baseStake;
         onLog('LOSS $profit | PnL: ${pnl.toStringAsFixed(2)}');
       }
+    } else {
+      // Empate: nao altera wins/losses nem martingale.
+      _consecutiveLosses = 0;
+      _martingaleLevel = 0;
+      currentStake = config.baseStake;
+      onLog('EMPATE (breakeven) | PnL: ${pnl.toStringAsFixed(2)}');
     }
     onTradeClosed(BotTradeResult(profit: profit, pnl: pnl, wins: wins, losses: losses));
 
+    _saveModelState();
     _refreshBalance();
 
     if (pnl <= -config.maxDailyLoss.abs()) {
@@ -403,6 +450,7 @@ class TradingBot {
     await _contractSub?.cancel();
     await _recoverySub?.cancel();
     api.dispose();
+    _saveModelState();
     onLog('Bot parado: $reason');
     if (notify) onStopped(reason);
   }

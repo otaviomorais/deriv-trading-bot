@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../bot/bot_task_handler.dart';
 import '../bot/trading_bot.dart';
 import '../models/bot_config.dart';
+import '../utils/paths.dart';
 
 class BotState extends ChangeNotifier {
   static const _prefsKey = 'bot_config_v1';
@@ -16,7 +17,7 @@ class BotState extends ChangeNotifier {
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
-  BotConfig config = const BotConfig(token: '', symbol: 'R_100');
+  BotConfig config = BotConfig(token: '', symbol: 'R_100');
 
   BotStatus status = BotStatus.idle;
   String currency = 'USD';
@@ -76,7 +77,7 @@ class BotState extends ChangeNotifier {
 
     config = BotConfig(
       token: token ?? '',
-      appId: map['appId'] as String? ?? '33wAcoYXHpsPdruTW0b7C',
+      appId: map['appId'] as String? ?? BotConfig.defaultAppId,
       symbol: map['symbol'] as String? ?? 'R_100',
       accountType: (map['accountType'] as String?) == BotConfig.accountReal
           ? BotConfig.accountReal
@@ -129,7 +130,7 @@ class BotState extends ChangeNotifier {
     notifyListeners();
   }
 
-  static final File _persistLog = File('/storage/emulated/0/Download/deriv_bot.log');
+  static final File _persistLog = AppPaths.logFile;
 
   void log(String message) {
     final ts = DateTime.now().toIso8601String().substring(11, 19);

@@ -180,11 +180,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               controller: _targetPayout,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
-                labelText: 'Retorno alvo (%) por operacao',
+                labelText: 'Lucro alvo (%) por operacao',
                 border: OutlineInputBorder(),
                 helperText:
-                    'Ex.: 30 = o bot calcula a barreira para pagar ~30% se '
-                    'vencer. Menor retorno = mais margem e mais chance.',
+                    'Ex.: 30 = o bot calcula a barreira para gerar ~30% de '
+                    'LUCRO LIQUIDO se vencer (payout = stake + 30%). Menor lucro '
+                    '= mais margem e mais chance.',
               ),
             ),
           ],

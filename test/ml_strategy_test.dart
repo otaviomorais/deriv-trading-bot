@@ -12,9 +12,9 @@ void main() {
 
     test('buildFeatures retorna o numero correto de features', () {
       final s = MLStrategy();
-      final closes = <double>[for (var i = 0; i < 50; i++) 100 + i * 0.1];
+      final closes = <double>[for (var i = 0; i < 60; i++) 100 + i * 0.1];
       final f = s.buildFeatures(closes)!;
-      expect(f.length, 9); // 6 lags + rsi + zscore + bollinger
+      expect(f.length, 13); // 6 lags + rsi + zscore + bollinger + momentum + 2 macd + atr
     });
 
     test('predictProbability sempre retorna valor entre 0 e 1', () {
@@ -56,6 +56,20 @@ void main() {
       s.reset();
       expect(s.trainedSamples, 0);
       expect(s.predictProbability(f), 0.5);
+    });
+
+    test('serializa e restaura o estado do modelo', () {
+      final s = MLStrategy();
+      final closes = <double>[for (var i = 0; i < 80; i++) 100 + math.sin(i / 5)];
+      s.warmUp(closes);
+      final json = s.toJson();
+
+      final s2 = MLStrategy();
+      s2.fromJson(json);
+      expect(s2.trainedSamples, s.trainedSamples);
+
+      final f = s.buildFeatures(closes)!;
+      expect(s2.predictProbability(f), closeTo(s.predictProbability(f), 1e-9));
     });
   });
 }

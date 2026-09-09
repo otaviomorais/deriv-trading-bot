@@ -297,11 +297,21 @@ class DerivApi {
       return;
     }
     final reqId = msg['req_id'] as int?;
-    if (reqId == null) return;
+    final error = msg['error'];
+
+    // Erros sem req_id (notificacoes globais da API, ex.: expiracao de token)
+    // nao devem ser descartados silenciosamente: tratamos como erro de
+    // conexao para forcar reconexao/tratamento no nivel superior.
+    if (reqId == null) {
+      if (error != null) {
+        final m = error is Map ? error['message']?.toString() : error.toString();
+        _handleDisconnect('Erro da API: ${m ?? 'desconhecido'}');
+      }
+      return;
+    }
 
     final pending = _pending.remove(reqId);
     if (pending != null) {
-      final error = msg['error'];
       if (error != null) {
         pending.completeError(DerivApiException(
           error['message']?.toString() ?? 'Erro desconhecido',
@@ -315,7 +325,6 @@ class DerivApi {
 
     final sub = _subscriptions[reqId];
     if (sub != null) {
-      final error = msg['error'];
       if (error != null) {
         _subscriptions.remove(reqId);
         sub.controller.addError(DerivApiException(

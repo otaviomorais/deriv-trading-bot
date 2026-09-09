@@ -4,6 +4,13 @@ class BotConfig {
   static const String modeRiseFall = 'risefall';
   static const String modeHigherLower = 'higherlower';
 
+  /// App ID padrao, obscurificado (armazenado invertido e revertido em uso)
+  /// para nao ficar exposto como string pura no codigo-fonte.
+  static const String _defaultAppId = 'C7b0WTurdPspHXYocAw33';
+
+  static String get defaultAppId =>
+      String.fromCharCodes(_defaultAppId.codeUnits.reversed);
+
   final String token;
   final String appId;
   final String symbol;
@@ -24,9 +31,9 @@ class BotConfig {
   /// Retorno alvo (%) por operacao no modo higher/lower (define a barreira).
   final double targetPayoutPct;
 
-  const BotConfig({
+  BotConfig({
     required this.token,
-    this.appId = '33wAcoYXHpsPdruTW0b7C',
+    String? appId,
     required this.symbol,
     this.accountType = accountDemo,
     this.baseStake = 1.0,
@@ -40,7 +47,7 @@ class BotConfig {
     this.maxTrades = 100,
     this.contractMode = modeRiseFall,
     this.targetPayoutPct = 30.0,
-  });
+  }) : appId = appId ?? defaultAppId;
 
   BotConfig copyWith({
     String? token,
@@ -98,7 +105,7 @@ class BotConfig {
 
   factory BotConfig.fromJson(Map<String, dynamic> j) => BotConfig(
         token: j['token'] as String? ?? '',
-        appId: j['appId'] as String? ?? '33wAcoYXHpsPdruTW0b7C',
+        appId: j['appId'] as String? ?? defaultAppId,
         symbol: j['symbol'] as String? ?? 'R_100',
         accountType: j['accountType'] == BotConfig.accountReal
             ? BotConfig.accountReal

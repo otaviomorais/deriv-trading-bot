@@ -51,4 +51,39 @@ void main() {
       expect(Indicators.zScoreLast(closes, 20), greaterThan(0));
     });
   });
+
+  group('Indicators.macd', () {
+    test('retorna zeros com dados insuficientes', () {
+      final m = Indicators.macd(List.filled(10, 100.0));
+      expect(m.macdLine, 0);
+      expect(m.signalLine, 0);
+    });
+
+    test('macd linha positiva em tendencia de alta', () {
+      final closes = <double>[for (var i = 0; i < 60; i++) 100 + i * 0.5];
+      final m = Indicators.macd(closes);
+      expect(m.macdLine, greaterThan(0));
+    });
+
+    test('macd linha negativa em tendencia de baixa', () {
+      final closes = <double>[for (var i = 0; i < 60; i++) 200 - i * 0.5];
+      final m = Indicators.macd(closes);
+      expect(m.macdLine, lessThan(0));
+    });
+  });
+
+  group('Indicators.atr', () {
+    test('retorna zero com dados insuficientes', () {
+      expect(Indicators.atr(List.filled(5, 100.0), 14), 0);
+    });
+
+    test('atr positivo em serie variavel', () {
+      final closes = <double>[for (var i = 0; i < 30; i++) 100 + (i % 3)];
+      expect(Indicators.atr(closes, 14), greaterThan(0));
+    });
+
+    test('atr zero em serie constante', () {
+      expect(Indicators.atr(List.filled(30, 50.0), 14), 0);
+    });
+  });
 }
